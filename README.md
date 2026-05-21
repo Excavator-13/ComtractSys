@@ -29,6 +29,8 @@ http://localhost:8080
 
 ```powershell
 $env:JWT_SECRET="replace-with-at-least-32-bytes-secret"
+$env:ADMIN_DEFAULT_PASSWORD="change-this-admin-password"
+$env:CORS_ALLOWED_ORIGINS="http://localhost:5173"
 ```
 
 默认账号：

@@ -29,10 +29,20 @@ spring:
       max-request-size: 50MB
 
 app:
+  admin:
+    default-password: ${ADMIN_DEFAULT_PASSWORD:123456}
   upload-dir: uploads
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   jwt:
     secret: ${JWT_SECRET:dev-secret-key-change-in-production-min-256-bits-long-enough-for-hs256}
     expiration: 86400
+
+springdoc:
+  api-docs:
+    enabled: ${SPRINGDOC_API_DOCS_ENABLED:true}
+  swagger-ui:
+    enabled: ${SPRINGDOC_SWAGGER_UI_ENABLED:true}
 
 ---
 spring:

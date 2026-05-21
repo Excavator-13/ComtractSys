@@ -5,9 +5,12 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import com.contractsys.user.UserRepository;
+import com.contractsys.user.UserStatus;
 
 import java.io.IOException;
 import java.util.List;
@@ -15,9 +18,11 @@ import java.util.List;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtTokenProvider jwtTokenProvider;
+    private final UserRepository userRepository;
 
-    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider) {
+    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider, UserRepository userRepository) {
         this.jwtTokenProvider = jwtTokenProvider;
+        this.userRepository = userRepository;
     }
 
     @Override
@@ -26,9 +31,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String token = extractToken(request);
         if (token != null && jwtTokenProvider.validateToken(token)) {
             Long userId = jwtTokenProvider.getUserIdFromToken(token);
-            UsernamePasswordAuthenticationToken auth =
-                    new UsernamePasswordAuthenticationToken(userId, null, List.of());
-            SecurityContextHolder.getContext().setAuthentication(auth);
+            userRepository.findById(userId)
+                    .filter(user -> !user.isDeleted() && user.getStatus() == UserStatus.ENABLED)
+                    .ifPresent(user -> {
+                        List<SimpleGrantedAuthority> authorities = user.getRoles().stream()
+                                .flatMap(role -> role.getPermissions().stream())
+                                .map(permission -> new SimpleGrantedAuthority(permission.getPermissionCode()))
+                                .distinct()
+                                .toList();
+                        UsernamePasswordAuthenticationToken auth =
+                                new UsernamePasswordAuthenticationToken(userId, null, authorities);
+                        SecurityContextHolder.getContext().setAuthentication(auth);
+                    });
         }
         filterChain.doFilter(request, response);
     }

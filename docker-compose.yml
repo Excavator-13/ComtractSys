@@ -34,6 +34,10 @@ services:
       MYSQL_URL: jdbc:mysql://mysql:3306/contractsys?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
       MYSQL_USERNAME: contractsys
       MYSQL_PASSWORD: contractsys
+      CORS_ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      ADMIN_DEFAULT_PASSWORD: 123456
+      SPRINGDOC_API_DOCS_ENABLED: "true"
+      SPRINGDOC_SWAGGER_UI_ENABLED: "true"
       JWT_SECRET: replace-with-at-least-32-bytes-secret-for-local-compose
       TZ: Asia/Shanghai
     ports:

@@ -43,10 +43,14 @@ function Invoke-HttpRequest($Method, $Url, $Body = $null, $Headers = @{}) {
 function Wait-Http($Name, $Url) {
     $deadline = (Get-Date).AddSeconds(90)
     while ((Get-Date) -lt $deadline) {
-        $response = Invoke-HttpRequest 'Get' $Url
-        if ($response.Status -ge 200 -and $response.Status -lt 500) {
-            Write-Output "[ok] $Name is reachable"
-            return $response
+        try {
+            $response = Invoke-HttpRequest 'Get' $Url
+            if ($response.Status -ge 200 -and $response.Status -lt 500) {
+                Write-Output "[ok] $Name is reachable"
+                return $response
+            }
+        } catch {
+            # Service may still be starting.
         }
         Start-Sleep -Seconds 2
     }

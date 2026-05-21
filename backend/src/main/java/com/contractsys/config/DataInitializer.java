@@ -1,6 +1,7 @@
 package com.contractsys.config;
 
 import com.contractsys.user.*;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
@@ -14,13 +15,16 @@ public class DataInitializer implements CommandLineRunner {
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
     private final PasswordEncoder passwordEncoder;
+    private final String adminDefaultPassword;
 
     public DataInitializer(UserRepository userRepository, RoleRepository roleRepository,
-                           PermissionRepository permissionRepository, PasswordEncoder passwordEncoder) {
+                           PermissionRepository permissionRepository, PasswordEncoder passwordEncoder,
+                           @Value("${app.admin.default-password:123456}") String adminDefaultPassword) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.permissionRepository = permissionRepository;
         this.passwordEncoder = passwordEncoder;
+        this.adminDefaultPassword = adminDefaultPassword;
     }
 
     @Override
@@ -43,7 +47,7 @@ public class DataInitializer implements CommandLineRunner {
             SysUser user = new SysUser();
             user.setUsername("admin");
             user.setDisplayName("管理员");
-            user.setPasswordHash(passwordEncoder.encode("123456"));
+            user.setPasswordHash(passwordEncoder.encode(adminDefaultPassword));
             user.getRoles().add(admin);
             userRepository.save(user);
         }
