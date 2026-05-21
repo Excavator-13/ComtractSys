@@ -64,6 +64,18 @@ class BoundaryIntegrationTest {
     }
 
     @Test
+    void registerRejectsOverlongUsername() throws Exception {
+        String username = "u".repeat(41);
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(String.format("""
+                                {"username":"%s","password":"123456","confirmPassword":"123456"}
+                                """, username)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(40000));
+    }
+
+    @Test
     void loginRejectsBadPassword() throws Exception {
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -72,6 +84,21 @@ class BoundaryIntegrationTest {
                                 """))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(40100));
+    }
+
+    @Test
+    void lowercaseBearerPrefixIsAccepted() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.username").value("admin"));
+    }
+
+    @Test
+    void unsupportedHttpMethodReturns405() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/login"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.code").value(40500));
     }
 
     @Test
@@ -204,6 +231,85 @@ class BoundaryIntegrationTest {
                 .andExpect(jsonPath("$.code").value(40000));
     }
 
+    @Test
+    void uploadRejectsContentThatDoesNotMatchExtension() throws Exception {
+        Long customerId = createCustomer();
+        Long contractId = createContract(customerId);
+        MockMultipartFile fakePdf = new MockMultipartFile(
+                "file", "fake.pdf", "application/pdf", "<script>alert(1)</script>".getBytes());
+
+        mockMvc.perform(multipart("/api/v1/contracts/" + contractId + "/attachments")
+                        .file(fakePdf)
+                        .header("Authorization", bearer()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(40000));
+    }
+
+    @Test
+    void nonDrafterCannotUpdateContract() throws Exception {
+        UserLogin operator = createOperatorUser();
+        Long customerId = createCustomer();
+        Long contractId = createContract(customerId);
+
+        mockMvc.perform(put("/api/v1/contracts/" + contractId)
+                        .header("Authorization", "Bearer " + operator.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(contractPayload(customerId, LocalDate.now(), LocalDate.now().plusDays(2))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(40300));
+    }
+
+    @Test
+    void signingRequiresAllSignTasksToFinish() throws Exception {
+        UserLogin operator = createOperatorUser();
+        Long customerId = createCustomer();
+        Long contractId = createContract(customerId);
+        Long adminUserId = currentUserId();
+
+        mockMvc.perform(post("/api/v1/contracts/" + contractId + "/assign")
+                        .header("Authorization", bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(String.format("""
+                                {"countersignUserIds":[%d],"approvalUserIds":[%d],"signUserIds":[%d,%d]}
+                                """, adminUserId, adminUserId, adminUserId, operator.id())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/contracts/" + contractId + "/countersign")
+                        .header("Authorization", bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"opinion\":\"同意\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contract.status").value("COUNTERSIGNED"));
+
+        mockMvc.perform(post("/api/v1/contracts/" + contractId + "/finalize")
+                        .header("Authorization", bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"最终合同正文\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contract.status").value("FINALIZED"));
+
+        mockMvc.perform(post("/api/v1/contracts/" + contractId + "/approve")
+                        .header("Authorization", bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"result\":\"APPROVED\",\"opinion\":\"同意\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contract.status").value("APPROVED"));
+
+        mockMvc.perform(post("/api/v1/contracts/" + contractId + "/sign")
+                        .header("Authorization", bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"signInfo\":\"管理员签订\",\"signedDate\":\"2026-05-21\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contract.status").value("APPROVED"));
+
+        mockMvc.perform(post("/api/v1/contracts/" + contractId + "/sign")
+                        .header("Authorization", "Bearer " + operator.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"signInfo\":\"操作员签订\",\"signedDate\":\"2026-05-21\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contract.status").value("SIGNED"));
+    }
+
     private String login(String username, String password) throws Exception {
         String response = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -246,6 +352,34 @@ class BoundaryIntegrationTest {
         return data.path("id").asLong();
     }
 
+    private UserLogin createOperatorUser() throws Exception {
+        Long operatorRoleId = findRoleId("ROLE_OPERATOR");
+        String username = unique("boundary_operator");
+        String response = mockMvc.perform(post("/api/v1/users")
+                        .header("Authorization", bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(String.format("""
+                                {"username":"%s","password":"123456","displayName":"边界操作员","roleIds":[%d]}
+                                """, username, operatorRoleId)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        Long userId = objectMapper.readTree(response).path("data").path("id").asLong();
+        return new UserLogin(userId, login(username, "123456"));
+    }
+
+    private Long findRoleId(String roleCode) throws Exception {
+        String response = mockMvc.perform(get("/api/v1/roles")
+                        .header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        for (JsonNode role : objectMapper.readTree(response).path("data")) {
+            if (roleCode.equals(role.path("roleCode").asText())) {
+                return role.path("id").asLong();
+            }
+        }
+        throw new AssertionError("未找到角色: " + roleCode);
+    }
+
     private String contractPayload(Long customerId, LocalDate beginDate, LocalDate endDate) {
         return String.format("""
                 {"name":"%s","customerId":%d,"beginDate":"%s","endDate":"%s","content":"合同正文"}
@@ -259,4 +393,6 @@ class BoundaryIntegrationTest {
     private String unique(String prefix) {
         return prefix + "_" + System.nanoTime();
     }
+
+    private record UserLogin(Long id, String token) {}
 }

@@ -37,9 +37,48 @@ $env:JWT_SECRET="replace-with-at-least-32-bytes-secret"
 admin / 123456
 ```
 
+## Docker 本地部署
+
+本地 Docker 可直接启动完整环境：
+
+```powershell
+cd backend
+mvn package
+cd ..
+docker compose up -d --build
+```
+
+如果本机 Maven 未加入 PATH，可将上面的 `mvn` 替换为 `C:\maven\apache-maven-3.9.16\bin\mvn.cmd`。
+
+访问地址：
+
+```text
+前端：http://localhost:5173
+后端：http://localhost:18080
+Swagger：http://localhost:18080/swagger-ui/index.html
+```
+
+查看日志：
+
+```powershell
+docker compose logs -f backend
+```
+
+运行冒烟测试：
+
+```powershell
+.\scripts\docker-smoke.ps1
+```
+
+停止环境：
+
+```powershell
+docker compose down
+```
+
 ## MySQL 联调
 
-启动 MySQL：
+如果只想启动 MySQL，再用本机 Maven 跑后端：
 
 ```powershell
 docker compose up -d mysql
@@ -50,7 +89,7 @@ docker compose up -d mysql
 ```powershell
 cd backend
 $env:SPRING_PROFILES_ACTIVE="mysql"
-$env:MYSQL_URL="jdbc:mysql://localhost:3306/contractsys?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false"
+$env:MYSQL_URL="jdbc:mysql://localhost:3307/contractsys?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false"
 $env:MYSQL_USERNAME="contractsys"
 $env:MYSQL_PASSWORD="contractsys"
 mvn spring-boot:run

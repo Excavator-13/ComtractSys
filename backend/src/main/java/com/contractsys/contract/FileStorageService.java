@@ -44,6 +44,7 @@ public class FileStorageService {
         if (!ALLOWED_EXTENSIONS.contains(ext)) {
             throw ApiException.badRequest("不支持的文件格式: " + ext + "，支持: " + String.join(", ", ALLOWED_EXTENSIONS));
         }
+        validateFileSignature(file, ext);
         String storedName = UUID.randomUUID() + "." + ext;
         Path target = uploadDir.resolve(storedName);
         try {
@@ -52,6 +53,50 @@ public class FileStorageService {
             throw new RuntimeException("文件保存失败", e);
         }
         return new StoredFile(originalName, storedName, file.getContentType(), file.getSize());
+    }
+
+    private void validateFileSignature(MultipartFile file, String ext) {
+        try {
+            byte[] header = file.getInputStream().readNBytes(8);
+            boolean valid = switch (ext) {
+                case "pdf" -> startsWith(header, "%PDF".getBytes());
+                case "jpg", "jpeg" -> header.length >= 3
+                        && (header[0] & 0xff) == 0xff
+                        && (header[1] & 0xff) == 0xd8
+                        && (header[2] & 0xff) == 0xff;
+                case "png" -> header.length >= 8
+                        && (header[0] & 0xff) == 0x89
+                        && header[1] == 'P'
+                        && header[2] == 'N'
+                        && header[3] == 'G';
+                case "gif" -> startsWith(header, "GIF87a".getBytes()) || startsWith(header, "GIF89a".getBytes());
+                case "bmp" -> startsWith(header, "BM".getBytes());
+                case "doc" -> header.length >= 8
+                        && (header[0] & 0xff) == 0xd0
+                        && (header[1] & 0xff) == 0xcf
+                        && (header[2] & 0xff) == 0x11
+                        && (header[3] & 0xff) == 0xe0;
+                case "docx" -> startsWith(header, "PK".getBytes());
+                default -> false;
+            };
+            if (!valid) {
+                throw ApiException.badRequest("文件内容与扩展名不匹配");
+            }
+        } catch (IOException e) {
+            throw ApiException.badRequest("无法读取文件内容");
+        }
+    }
+
+    private boolean startsWith(byte[] value, byte[] prefix) {
+        if (value.length < prefix.length) {
+            return false;
+        }
+        for (int i = 0; i < prefix.length; i++) {
+            if (value[i] != prefix[i]) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public Path resolve(String storedName) {

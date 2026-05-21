@@ -9,7 +9,7 @@ services:
       MYSQL_PASSWORD: contractsys
       TZ: Asia/Shanghai
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - contractsys-mysql-data:/var/lib/mysql
     healthcheck:
@@ -19,5 +19,38 @@ services:
       retries: 10
       start_period: 30s
 
+  backend:
+    build:
+      context: ./backend
+    image: contractsys-backend:local
+    container_name: contractsys-backend
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: mysql
+      SPRING_JPA_HIBERNATE_DDL_AUTO: none
+      SPRING_JPA_PROPERTIES_HIBERNATE_HBM2DDL_AUTO: none
+      MYSQL_URL: jdbc:mysql://mysql:3306/contractsys?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      MYSQL_USERNAME: contractsys
+      MYSQL_PASSWORD: contractsys
+      JWT_SECRET: replace-with-at-least-32-bytes-secret-for-local-compose
+      TZ: Asia/Shanghai
+    ports:
+      - "18080:8080"
+    volumes:
+      - contractsys-uploads:/app/uploads
+
+  frontend:
+    build:
+      context: ./frontend
+    image: contractsys-frontend:local
+    container_name: contractsys-frontend
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
 volumes:
   contractsys-mysql-data:
+  contractsys-uploads:

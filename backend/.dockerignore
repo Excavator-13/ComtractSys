@@ -1,0 +1,5 @@
+target/*
+!target/contract-sys-backend-0.1.0-SNAPSHOT.jar
+uploads/
+*.log
+.mvn/

@@ -135,7 +135,9 @@ public class ContractService {
         finishTask(id, operator, TaskType.SIGN, TaskStatus.DONE, request.signInfo());
         contract.setSignedDate(request.signedDate());
         contract.setSignInfo(request.signInfo());
-        changeStatus(contract, ContractStatus.SIGNED, operator, "合同签订完成");
+        if (!taskRepository.existsByContractIdAndTaskTypeAndTaskStatus(id, TaskType.SIGN, TaskStatus.PENDING)) {
+            changeStatus(contract, ContractStatus.SIGNED, operator, "合同签订完成");
+        }
         return detail(id);
     }
 
@@ -143,6 +145,9 @@ public class ContractService {
     public ContractView update(Long id, ContractCreateRequest request, SysUser operator) {
         Contract contract = getContract(id);
         requireStatus(contract, ContractStatus.DRAFT, ContractStatus.COUNTERSIGNED, ContractStatus.REJECTED);
+        if (!contract.getDrafter().getId().equals(operator.getId())) {
+            throw ApiException.forbidden("只有起草人可以修改合同");
+        }
         contract.setName(request.name());
         contract.setBeginDate(request.beginDate());
         contract.setEndDate(request.endDate());
@@ -184,7 +189,7 @@ public class ContractService {
         // Reset rejected approval tasks back to PENDING
         List<ContractTask> approvalTasks = taskRepository.findByContractIdAndTaskType(contract.getId(), TaskType.APPROVAL);
         for (ContractTask task : approvalTasks) {
-            if (task.getTaskStatus() == TaskStatus.REJECTED || task.getTaskStatus() == TaskStatus.DONE) {
+            if (task.getTaskStatus() == TaskStatus.REJECTED) {
                 task.setTaskStatus(TaskStatus.PENDING);
                 task.setOpinion(null);
                 task.setOperatedAt(null);

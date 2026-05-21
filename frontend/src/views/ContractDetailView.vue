@@ -186,7 +186,7 @@ async function deleteAttachment(a) {
   }
 }
 
-const hasPendingTask = computed(() => tasks.value.some(t => t.taskStatus === 'PENDING' && t.assigneeId === JSON.parse(localStorage.getItem('user') || '{}')?.id))
+const hasPendingTask = computed(() => tasks.value.some(t => t.taskStatus === 'PENDING' && t.assigneeId === auth.user?.id))
 
 onMounted(() => { loadDetail(); loadUsers(); loadAttachments() })
 </script>
@@ -272,7 +272,7 @@ onMounted(() => { loadDetail(); loadUsers(); loadAttachments() })
           <label v-if="hasPermission('contract:update')" class="secondary" style="display:inline-flex;cursor:pointer;min-height:38px;align-items:center;gap:8px;padding:0 14px;border-radius:6px;font-weight:700">
             <Upload :size="16" />
             {{ uploading ? '上传中...' : '选择文件' }}
-            <input type="file" hidden @change="handleUpload" :disabled="uploading" />
+            <input type="file" hidden accept=".doc,.docx,.jpg,.jpeg,.png,.bmp,.gif,.pdf" @change="handleUpload" :disabled="uploading" />
           </label>
           <span class="muted" style="margin-left:10px;font-size:13px">支持 doc/docx/jpg/png/pdf，最大 10MB</span>
         </div>
