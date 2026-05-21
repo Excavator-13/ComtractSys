@@ -29,7 +29,7 @@ public class PermissionInterceptor implements HandlerInterceptor {
         if (permission == null) {
             return true;
         }
-        SysUser user = authService.requireUser(request.getHeader("Authorization"));
+        SysUser user = authService.requireUser();
         authService.requireAnyPermission(user, Arrays.asList(permission.value()));
         return true;
     }

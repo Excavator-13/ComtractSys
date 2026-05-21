@@ -25,6 +25,12 @@ http://localhost:8080
 
 开发环境默认使用 H2 内存数据库，同时保留 MySQL 驱动，后续可切换到 MySQL。
 
+认证使用 JWT，开发环境提供默认密钥；联调或部署时建议通过环境变量覆盖：
+
+```powershell
+$env:JWT_SECRET="replace-with-at-least-32-bytes-secret"
+```
+
 默认账号：
 
 ```text
@@ -44,4 +50,3 @@ npm run dev
 ```text
 http://localhost:5173
 ```
-

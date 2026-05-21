@@ -37,11 +37,10 @@ public class UserController {
     }
 
     @GetMapping
-    public ApiResponse<PageResponse<UserView>> list(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                                     @RequestParam(defaultValue = "") String keyword,
+    public ApiResponse<PageResponse<UserView>> list(@RequestParam(defaultValue = "") String keyword,
                                                      @RequestParam(defaultValue = "1") int page,
                                                      @RequestParam(defaultValue = "10") int size) {
-        authService.requireUser(authorization);
+        authService.requireUser();
         PageRequest pr = PageRequest.of(Math.max(page - 1, 0), size, Sort.by("createdAt").descending());
         Page<SysUser> result;
         if (keyword.isEmpty()) {
@@ -53,9 +52,8 @@ public class UserController {
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<UserView> get(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                      @PathVariable Long id) {
-        authService.requireUser(authorization);
+    public ApiResponse<UserView> get(@PathVariable Long id) {
+        authService.requireUser();
         SysUser user = userRepository.findById(id).filter(u -> !u.isDeleted())
                 .orElseThrow(() -> ApiException.notFound("用户不存在"));
         return ApiResponse.ok(UserView.from(user));
@@ -63,8 +61,8 @@ public class UserController {
 
     @GetMapping("/assignable")
     @RequirePermission({"user:manage", "contract:assign"})
-    public ApiResponse<List<UserView>> assignableUsers(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        authService.requireUser(authorization);
+    public ApiResponse<List<UserView>> assignableUsers() {
+        authService.requireUser();
         return ApiResponse.ok(userRepository.findByDeletedFalse(PageRequest.of(0, 500, Sort.by("username").ascending()))
                 .getContent()
                 .stream()
@@ -74,9 +72,8 @@ public class UserController {
     }
 
     @PostMapping
-    public ApiResponse<UserView> create(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                         @Valid @RequestBody UserCreateRequest request) {
-        authService.requireUser(authorization);
+    public ApiResponse<UserView> create(@Valid @RequestBody UserCreateRequest request) {
+        authService.requireUser();
         if (userRepository.existsByUsernameAndDeletedFalse(request.username())) {
             throw ApiException.conflict("用户名已存在");
         }
@@ -97,10 +94,9 @@ public class UserController {
     }
 
     @PutMapping("/{id}")
-    public ApiResponse<UserView> update(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                         @PathVariable Long id,
+    public ApiResponse<UserView> update(@PathVariable Long id,
                                          @Valid @RequestBody UserUpdateRequest request) {
-        authService.requireUser(authorization);
+        authService.requireUser();
         SysUser user = userRepository.findById(id).filter(u -> !u.isDeleted())
                 .orElseThrow(() -> ApiException.notFound("用户不存在"));
         if (request.displayName() != null) user.setDisplayName(request.displayName());
@@ -114,10 +110,9 @@ public class UserController {
     }
 
     @PatchMapping("/{id}/status")
-    public ApiResponse<Void> toggleStatus(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                           @PathVariable Long id,
+    public ApiResponse<Void> toggleStatus(@PathVariable Long id,
                                            @Valid @RequestBody UserStatusRequest request) {
-        authService.requireUser(authorization);
+        authService.requireUser();
         SysUser user = userRepository.findById(id).filter(u -> !u.isDeleted())
                 .orElseThrow(() -> ApiException.notFound("用户不存在"));
         if ("admin".equals(user.getUsername()) && request.status() == UserStatus.DISABLED) {
@@ -129,9 +124,8 @@ public class UserController {
     }
 
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                     @PathVariable Long id) {
-        authService.requireUser(authorization);
+    public ApiResponse<Void> delete(@PathVariable Long id) {
+        authService.requireUser();
         SysUser user = userRepository.findById(id).filter(u -> !u.isDeleted())
                 .orElseThrow(() -> ApiException.notFound("用户不存在"));
         if ("admin".equals(user.getUsername())) {
@@ -143,10 +137,9 @@ public class UserController {
     }
 
     @PutMapping("/{id}/roles")
-    public ApiResponse<UserView> assignRoles(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                              @PathVariable Long id,
+    public ApiResponse<UserView> assignRoles(@PathVariable Long id,
                                               @Valid @RequestBody AssignRolesRequest request) {
-        authService.requireUser(authorization);
+        authService.requireUser();
         SysUser user = userRepository.findById(id).filter(u -> !u.isDeleted())
                 .orElseThrow(() -> ApiException.notFound("用户不存在"));
         if ("admin".equals(user.getUsername()) && (request.roleIds() == null || request.roleIds().isEmpty())) {

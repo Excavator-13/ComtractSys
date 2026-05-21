@@ -41,116 +41,104 @@ public class ContractController {
 
     @GetMapping("/contracts")
     @RequirePermission("contract:view")
-    public ApiResponse<PageResponse<ContractView>> list(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                                        @RequestParam(defaultValue = "") String keyword,
+    public ApiResponse<PageResponse<ContractView>> list(@RequestParam(defaultValue = "") String keyword,
                                                         @RequestParam(defaultValue = "") String status,
                                                         @RequestParam(defaultValue = "1") int page,
                                                         @RequestParam(defaultValue = "10") int size) {
-        authService.requireUser(authorization);
+        authService.requireUser();
         return ApiResponse.ok(PageResponse.from(contractService.list(keyword, status, page, size)));
     }
 
     @GetMapping("/contracts/{id}")
     @RequirePermission("contract:view")
-    public ApiResponse<ContractDetailView> detail(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                                  @PathVariable Long id) {
-        authService.requireUser(authorization);
+    public ApiResponse<ContractDetailView> detail(@PathVariable Long id) {
+        authService.requireUser();
         return ApiResponse.ok(contractService.detail(id));
     }
 
     @PostMapping("/contracts")
     @RequirePermission("contract:create")
-    public ApiResponse<ContractView> create(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                            @Valid @RequestBody ContractCreateRequest request) {
-        SysUser user = authService.requireUser(authorization);
+    public ApiResponse<ContractView> create(@Valid @RequestBody ContractCreateRequest request) {
+        SysUser user = authService.requireUser();
         return ApiResponse.ok("起草成功", contractService.create(request, user));
     }
 
     @PostMapping("/contracts/{id}/assign")
     @RequirePermission("contract:assign")
-    public ApiResponse<ContractDetailView> assign(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                                  @PathVariable Long id,
+    public ApiResponse<ContractDetailView> assign(@PathVariable Long id,
                                                   @Valid @RequestBody AssignRequest request) {
-        SysUser user = authService.requireUser(authorization);
+        SysUser user = authService.requireUser();
         return ApiResponse.ok(contractService.assign(id, request, user));
     }
 
     @GetMapping("/tasks/my")
     @RequirePermission({"contract:countersign", "contract:approve", "contract:sign", "contract:update"})
-    public ApiResponse<List<TaskView>> myTasks(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        SysUser user = authService.requireUser(authorization);
+    public ApiResponse<List<TaskView>> myTasks() {
+        SysUser user = authService.requireUser();
         return ApiResponse.ok(contractService.myTasks(user));
     }
 
     @PostMapping("/contracts/{id}/countersign")
     @RequirePermission("contract:countersign")
-    public ApiResponse<ContractDetailView> countersign(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                                       @PathVariable Long id,
+    public ApiResponse<ContractDetailView> countersign(@PathVariable Long id,
                                                        @Valid @RequestBody OpinionRequest request) {
-        SysUser user = authService.requireUser(authorization);
+        SysUser user = authService.requireUser();
         return ApiResponse.ok(contractService.countersign(id, request, user));
     }
 
     @PostMapping("/contracts/{id}/finalize")
     @RequirePermission("contract:update")
-    public ApiResponse<ContractDetailView> finalizeContract(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                                           @PathVariable Long id,
+    public ApiResponse<ContractDetailView> finalizeContract(@PathVariable Long id,
                                                            @Valid @RequestBody FinalizeRequest request) {
-        SysUser user = authService.requireUser(authorization);
+        SysUser user = authService.requireUser();
         return ApiResponse.ok(contractService.finalizeContract(id, request, user));
     }
 
     @PostMapping("/contracts/{id}/approve")
     @RequirePermission("contract:approve")
-    public ApiResponse<ContractDetailView> approve(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                                   @PathVariable Long id,
+    public ApiResponse<ContractDetailView> approve(@PathVariable Long id,
                                                    @Valid @RequestBody ApproveRequest request) {
-        SysUser user = authService.requireUser(authorization);
+        SysUser user = authService.requireUser();
         return ApiResponse.ok(contractService.approve(id, request, user));
     }
 
     @PostMapping("/contracts/{id}/sign")
     @RequirePermission("contract:sign")
-    public ApiResponse<ContractDetailView> sign(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                                @PathVariable Long id,
+    public ApiResponse<ContractDetailView> sign(@PathVariable Long id,
                                                 @Valid @RequestBody SignRequest request) {
-        SysUser user = authService.requireUser(authorization);
+        SysUser user = authService.requireUser();
         return ApiResponse.ok(contractService.sign(id, request, user));
     }
 
     @PutMapping("/contracts/{id}")
     @RequirePermission("contract:update")
-    public ApiResponse<ContractView> update(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                            @PathVariable Long id,
+    public ApiResponse<ContractView> update(@PathVariable Long id,
                                             @Valid @RequestBody ContractCreateRequest request) {
-        SysUser user = authService.requireUser(authorization);
+        SysUser user = authService.requireUser();
         return ApiResponse.ok(contractService.update(id, request, user));
     }
 
     @DeleteMapping("/contracts/{id}")
     @RequirePermission("contract:delete")
-    public ApiResponse<Void> delete(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                    @PathVariable Long id) {
-        SysUser user = authService.requireUser(authorization);
+    public ApiResponse<Void> delete(@PathVariable Long id) {
+        SysUser user = authService.requireUser();
         contractService.delete(id, user);
         return ApiResponse.ok(null);
     }
 
     @GetMapping("/logs")
     @RequirePermission("log:view")
-    public ApiResponse<PageResponse<ContractStateHistory>> logs(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                                                  @RequestParam(defaultValue = "") String keyword,
+    public ApiResponse<PageResponse<ContractStateHistory>> logs(@RequestParam(defaultValue = "") String keyword,
                                                                   @RequestParam(defaultValue = "1") int page,
                                                                   @RequestParam(defaultValue = "10") int size) {
-        authService.requireUser(authorization);
+        authService.requireUser();
         return ApiResponse.ok(PageResponse.from(contractService.logs(keyword, page, size)));
     }
 
     @GetMapping("/logs/export")
     @RequirePermission("log:view")
-    public ResponseEntity<Resource> exportLogs(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                                @RequestParam(defaultValue = "") String keyword) throws Exception {
-        authService.requireUser(authorization);
+    public ResponseEntity<Resource> exportLogs(@RequestParam(defaultValue = "") String keyword) throws Exception {
+        authService.requireUser();
         byte[] csv = contractService.exportLogs(keyword);
         Resource resource = new org.springframework.core.io.ByteArrayResource(csv);
         String filename = "logs_" + java.time.LocalDate.now() + ".csv";
@@ -163,10 +151,9 @@ public class ContractController {
 
     @PostMapping("/contracts/{id}/attachments")
     @RequirePermission("contract:update")
-    public ApiResponse<Map<String, Object>> uploadAttachment(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                                              @PathVariable Long id,
+    public ApiResponse<Map<String, Object>> uploadAttachment(@PathVariable Long id,
                                                               @RequestParam("file") MultipartFile file) {
-        SysUser user = authService.requireUser(authorization);
+        SysUser user = authService.requireUser();
         Contract contract = contractService.getContract(id);
         FileStorageService.StoredFile stored = fileStorageService.store(file);
         Attachment attachment = new Attachment();
@@ -182,9 +169,8 @@ public class ContractController {
 
     @GetMapping("/contracts/{id}/attachments")
     @RequirePermission("contract:view")
-    public ApiResponse<List<Map<String, Object>>> listAttachments(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                                                    @PathVariable Long id) {
-        authService.requireUser(authorization);
+    public ApiResponse<List<Map<String, Object>>> listAttachments(@PathVariable Long id) {
+        authService.requireUser();
         List<Map<String, Object>> list = attachmentRepository.findByContractIdOrderByUploadedAtDesc(id).stream()
                 .map(a -> Map.<String, Object>of(
                         "id", a.getId(),
@@ -198,9 +184,8 @@ public class ContractController {
 
     @GetMapping("/attachments/{id}/download")
     @RequirePermission("contract:view")
-    public ResponseEntity<Resource> downloadAttachment(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                                        @PathVariable Long id) {
-        authService.requireUser(authorization);
+    public ResponseEntity<Resource> downloadAttachment(@PathVariable Long id) {
+        authService.requireUser();
         Attachment attachment = attachmentRepository.findById(id)
                 .orElseThrow(() -> com.contractsys.common.ApiException.notFound("附件不存在"));
         Path filePath = fileStorageService.resolve(attachment.getStoredName());
@@ -217,9 +202,8 @@ public class ContractController {
 
     @DeleteMapping("/attachments/{id}")
     @RequirePermission("contract:update")
-    public ApiResponse<Void> deleteAttachment(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                               @PathVariable Long id) {
-        authService.requireUser(authorization);
+    public ApiResponse<Void> deleteAttachment(@PathVariable Long id) {
+        authService.requireUser();
         Attachment attachment = attachmentRepository.findById(id)
                 .orElseThrow(() -> com.contractsys.common.ApiException.notFound("附件不存在"));
         try {
@@ -231,16 +215,15 @@ public class ContractController {
 
     @PostMapping("/contracts/{id}/resubmit")
     @RequirePermission("contract:update")
-    public ApiResponse<ContractDetailView> resubmit(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                                     @PathVariable Long id) {
-        SysUser user = authService.requireUser(authorization);
+    public ApiResponse<ContractDetailView> resubmit(@PathVariable Long id) {
+        SysUser user = authService.requireUser();
         return ApiResponse.ok(contractService.resubmit(id, user));
     }
 
     @GetMapping("/statistics")
     @RequirePermission("contract:view")
-    public ApiResponse<Map<String, Object>> statistics(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        authService.requireUser(authorization);
+    public ApiResponse<Map<String, Object>> statistics() {
+        authService.requireUser();
         return ApiResponse.ok(contractService.getStatistics());
     }
 }

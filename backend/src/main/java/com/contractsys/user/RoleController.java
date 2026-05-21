@@ -31,15 +31,14 @@ public class RoleController {
     }
 
     @GetMapping
-    public ApiResponse<List<RoleView>> list(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        authService.requireUser(authorization);
+    public ApiResponse<List<RoleView>> list() {
+        authService.requireUser();
         return ApiResponse.ok(roleRepository.findAll().stream().map(RoleView::from).toList());
     }
 
     @PostMapping
-    public ApiResponse<RoleView> create(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                        @Valid @RequestBody RoleRequest request) {
-        authService.requireUser(authorization);
+    public ApiResponse<RoleView> create(@Valid @RequestBody RoleRequest request) {
+        authService.requireUser();
         if (roleRepository.existsByRoleCode(request.roleCode())) {
             throw ApiException.conflict("角色编码已存在");
         }
@@ -51,10 +50,9 @@ public class RoleController {
     }
 
     @PutMapping("/{id}")
-    public ApiResponse<RoleView> update(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                        @PathVariable Long id,
+    public ApiResponse<RoleView> update(@PathVariable Long id,
                                         @Valid @RequestBody RoleUpdateRequest request) {
-        authService.requireUser(authorization);
+        authService.requireUser();
         SysRole role = roleRepository.findById(id).orElseThrow(() -> ApiException.notFound("角色不存在"));
         if (BUILT_IN_ROLES.contains(role.getRoleCode()) && !role.getRoleName().equals(request.roleName())) {
             throw ApiException.conflict("系统内置角色名称不允许修改");
@@ -65,9 +63,8 @@ public class RoleController {
     }
 
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                     @PathVariable Long id) {
-        authService.requireUser(authorization);
+    public ApiResponse<Void> delete(@PathVariable Long id) {
+        authService.requireUser();
         SysRole role = roleRepository.findById(id).orElseThrow(() -> ApiException.notFound("角色不存在"));
         if (BUILT_IN_ROLES.contains(role.getRoleCode())) {
             throw ApiException.conflict("系统内置角色不能删除");
@@ -77,10 +74,9 @@ public class RoleController {
     }
 
     @PutMapping("/{id}/permissions")
-    public ApiResponse<RoleView> assignPermissions(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                                   @PathVariable Long id,
+    public ApiResponse<RoleView> assignPermissions(@PathVariable Long id,
                                                    @Valid @RequestBody AssignPermissionsRequest request) {
-        authService.requireUser(authorization);
+        authService.requireUser();
         SysRole role = roleRepository.findById(id).orElseThrow(() -> ApiException.notFound("角色不存在"));
         if ("ROLE_ADMIN".equals(role.getRoleCode()) && (request.permissionIds() == null || request.permissionIds().isEmpty())) {
             throw ApiException.conflict("系统管理员角色不能清空权限");

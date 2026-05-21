@@ -5,31 +5,27 @@ import com.contractsys.auth.dto.RegisterRequest;
 import com.contractsys.auth.dto.UserView;
 import com.contractsys.common.ApiException;
 import com.contractsys.user.*;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.security.SecureRandom;
-import java.time.Instant;
-import java.util.Base64;
 import java.util.Collection;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class AuthService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
-    private final SecureRandom secureRandom = new SecureRandom();
-    private final Map<String, TokenInfo> tokenUserIds = new ConcurrentHashMap<>();
+    private final JwtTokenProvider jwtTokenProvider;
 
-    private record TokenInfo(Long userId, Instant expiresAt) {}
-
-    public AuthService(UserRepository userRepository, RoleRepository roleRepository, PasswordEncoder passwordEncoder) {
+    public AuthService(UserRepository userRepository, RoleRepository roleRepository,
+                       PasswordEncoder passwordEncoder, JwtTokenProvider jwtTokenProvider) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
+        this.jwtTokenProvider = jwtTokenProvider;
     }
 
     @Transactional
@@ -56,32 +52,30 @@ public class AuthService {
         if (user.getStatus() != UserStatus.ENABLED || !passwordEncoder.matches(password, user.getPasswordHash())) {
             throw ApiException.unauthorized("用户名或密码错误");
         }
-        String token = createToken();
-        tokenUserIds.put(token, new TokenInfo(user.getId(), Instant.now().plusSeconds(86400)));
+        String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername());
         return new LoginResponse(token, UserView.from(user));
     }
 
-    public SysUser requireUser(String authorization) {
-        String token = parseToken(authorization);
-        TokenInfo info = tokenUserIds.get(token);
-        if (info == null) {
+    public SysUser requireUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || !(auth.getPrincipal() instanceof Long userId)) {
             throw ApiException.unauthorized("请先登录");
         }
-        if (Instant.now().isAfter(info.expiresAt)) {
-            tokenUserIds.remove(token);
-            throw ApiException.unauthorized("登录已过期，请重新登录");
+        SysUser user = userRepository.findById(userId)
+                .filter(u -> !u.isDeleted())
+                .orElseThrow(() -> ApiException.unauthorized("登录用户不存在"));
+        if (user.getStatus() != UserStatus.ENABLED) {
+            throw ApiException.unauthorized("账号已禁用");
         }
-        return userRepository.findById(info.userId).orElseThrow(() -> ApiException.unauthorized("登录用户不存在"));
+        return user;
     }
 
-    public void logout(String authorization) {
-        if (authorization != null && authorization.startsWith("Bearer ")) {
-            tokenUserIds.remove(authorization.substring("Bearer ".length()));
-        }
+    public void logout() {
+        SecurityContextHolder.clearContext();
     }
 
-    public UserView currentUser(String authorization) {
-        return UserView.from(requireUser(authorization));
+    public UserView currentUser() {
+        return UserView.from(requireUser());
     }
 
     public void requireAnyPermission(SysUser user, Collection<String> requiredPermissions) {
@@ -100,18 +94,5 @@ public class AuthService {
         return user.getRoles().stream()
                 .flatMap(role -> role.getPermissions().stream())
                 .anyMatch(permission -> permission.getPermissionCode().equals(permissionCode));
-    }
-
-    private String parseToken(String authorization) {
-        if (authorization == null || !authorization.startsWith("Bearer ")) {
-            throw ApiException.unauthorized("请先登录");
-        }
-        return authorization.substring("Bearer ".length());
-    }
-
-    private String createToken() {
-        byte[] bytes = new byte[32];
-        secureRandom.nextBytes(bytes);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 }

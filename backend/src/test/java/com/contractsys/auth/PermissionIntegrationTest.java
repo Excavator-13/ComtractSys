@@ -83,12 +83,14 @@ class PermissionIntegrationTest {
         contractAdminToken = login("test_contract_admin", "123456");
 
         // Register new user (no permissions)
-        mockMvc.perform(post("/api/v1/auth/register")
+        String newUserResp = mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"username":"test_newuser","password":"123456","confirmPassword":"123456"}
                                 """))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        newUserId = objectMapper.readTree(newUserResp).path("data").path("id").asLong();
         newUserToken = login("test_newuser", "123456");
     }
 
@@ -339,7 +341,45 @@ class PermissionIntegrationTest {
     @Order(7)
     void unauthenticatedUserCannotAccessContracts() throws Exception {
         mockMvc.perform(get("/api/v1/contracts"))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(40100));
+    }
+
+    @Test
+    @Order(7)
+    void invalidTokenCannotAccessContracts() throws Exception {
+        mockMvc.perform(get("/api/v1/contracts")
+                        .header("Authorization", "Bearer invalid.jwt.token"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(40100));
+    }
+
+    @Test
+    @Order(8)
+    void disabledUserTokenCannotAccessAuthenticatedEndpoint() throws Exception {
+        mockMvc.perform(patch("/api/v1/users/" + operatorUserId + "/status")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"DISABLED\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + operatorToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(40100));
+    }
+
+    @Test
+    @Order(8)
+    void deletedUserTokenCannotAccessAuthenticatedEndpoint() throws Exception {
+        mockMvc.perform(delete("/api/v1/users/" + newUserId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + newUserToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(40100));
     }
 
     // ========== Helper ==========

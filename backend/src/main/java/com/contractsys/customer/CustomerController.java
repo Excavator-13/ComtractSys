@@ -21,33 +21,29 @@ public class CustomerController {
     }
 
     @GetMapping
-    public ApiResponse<PageResponse<Customer>> list(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                                    @RequestParam(defaultValue = "") String keyword,
+    public ApiResponse<PageResponse<Customer>> list(@RequestParam(defaultValue = "") String keyword,
                                                     @RequestParam(defaultValue = "1") int page,
                                                     @RequestParam(defaultValue = "10") int size) {
-        authService.requireUser(authorization);
+        authService.requireUser();
         return ApiResponse.ok(PageResponse.from(customerService.list(keyword, page, size)));
     }
 
     @PostMapping
-    public ApiResponse<Customer> create(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                        @Valid @RequestBody CustomerRequest request) {
-        authService.requireUser(authorization);
+    public ApiResponse<Customer> create(@Valid @RequestBody CustomerRequest request) {
+        authService.requireUser();
         return ApiResponse.ok(customerService.create(request));
     }
 
     @PutMapping("/{id}")
-    public ApiResponse<Customer> update(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                        @PathVariable Long id,
+    public ApiResponse<Customer> update(@PathVariable Long id,
                                         @Valid @RequestBody CustomerRequest request) {
-        authService.requireUser(authorization);
+        authService.requireUser();
         return ApiResponse.ok(customerService.update(id, request));
     }
 
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                    @PathVariable Long id) {
-        authService.requireUser(authorization);
+    public ApiResponse<Void> delete(@PathVariable Long id) {
+        authService.requireUser();
         customerService.delete(id);
         return ApiResponse.ok(null);
     }

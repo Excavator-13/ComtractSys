@@ -21,8 +21,8 @@ public class PermissionController {
     }
 
     @GetMapping
-    public ApiResponse<List<PermissionView>> list(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        authService.requireUser(authorization);
+    public ApiResponse<List<PermissionView>> list() {
+        authService.requireUser();
         return ApiResponse.ok(permissionRepository.findAll().stream().map(PermissionView::from).toList());
     }
 }

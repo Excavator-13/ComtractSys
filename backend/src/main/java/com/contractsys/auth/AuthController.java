@@ -28,13 +28,13 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    public ApiResponse<UserView> me(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return ApiResponse.ok(authService.currentUser(authorization));
+    public ApiResponse<UserView> me() {
+        return ApiResponse.ok(authService.currentUser());
     }
 
     @PostMapping("/logout")
-    public ApiResponse<Void> logout(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        authService.logout(authorization);
+    public ApiResponse<Void> logout() {
+        authService.logout();
         return ApiResponse.ok(null);
     }
 }
