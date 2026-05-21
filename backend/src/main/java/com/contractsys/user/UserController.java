@@ -6,12 +6,12 @@ import com.contractsys.auth.dto.UserView;
 import com.contractsys.common.ApiException;
 import com.contractsys.common.ApiResponse;
 import com.contractsys.common.PageResponse;
+import com.contractsys.common.PageRequests;
 import com.contractsys.user.dto.AssignRolesRequest;
 import com.contractsys.user.dto.UserCreateRequest;
 import com.contractsys.user.dto.UserStatusRequest;
 import com.contractsys.user.dto.UserUpdateRequest;
 import jakarta.validation.Valid;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -41,7 +41,7 @@ public class UserController {
                                                      @RequestParam(defaultValue = "1") int page,
                                                      @RequestParam(defaultValue = "10") int size) {
         authService.requireUser();
-        PageRequest pr = PageRequest.of(Math.max(page - 1, 0), size, Sort.by("createdAt").descending());
+        var pr = PageRequests.of(page, size).withSort(Sort.by("createdAt").descending());
         Page<SysUser> result;
         if (keyword.isEmpty()) {
             result = userRepository.findByDeletedFalse(pr);
@@ -63,7 +63,7 @@ public class UserController {
     @RequirePermission({"user:manage", "contract:assign"})
     public ApiResponse<List<UserView>> assignableUsers() {
         authService.requireUser();
-        return ApiResponse.ok(userRepository.findByDeletedFalse(PageRequest.of(0, 500, Sort.by("username").ascending()))
+        return ApiResponse.ok(userRepository.findByDeletedFalse(org.springframework.data.domain.PageRequest.of(0, 500, Sort.by("username").ascending()))
                 .getContent()
                 .stream()
                 .filter(user -> user.getStatus() == UserStatus.ENABLED)

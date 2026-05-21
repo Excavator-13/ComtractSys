@@ -1,13 +1,13 @@
 package com.contractsys.contract;
 
 import com.contractsys.common.ApiException;
+import com.contractsys.common.PageRequests;
 import com.contractsys.contract.dto.*;
 import com.contractsys.customer.Customer;
 import com.contractsys.customer.CustomerRepository;
 import com.contractsys.user.SysUser;
 import com.contractsys.user.UserRepository;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,11 +37,15 @@ public class ContractService {
     public Page<ContractView> list(String keyword, String statusStr, int page, int size) {
         ContractStatus status = null;
         if (statusStr != null && !statusStr.isEmpty()) {
-            status = ContractStatus.valueOf(statusStr);
+            try {
+                status = ContractStatus.valueOf(statusStr);
+            } catch (IllegalArgumentException ex) {
+                throw ApiException.badRequest("合同状态不合法: " + statusStr);
+            }
         }
         return contractRepository.search(
                 keyword == null ? "" : keyword, status,
-                PageRequest.of(Math.max(page - 1, 0), size)
+                PageRequests.of(page, size)
         ).map(ContractView::from);
     }
 
@@ -166,7 +170,7 @@ public class ContractService {
     }
 
     public Page<ContractStateHistory> logs(String keyword, int page, int size) {
-        PageRequest pr = PageRequest.of(Math.max(page - 1, 0), size);
+        var pr = PageRequests.of(page, size);
         if (keyword == null || keyword.isEmpty()) {
             return contractRepository.findHistory(pr);
         }
@@ -285,4 +289,3 @@ public class ContractService {
         stateHistoryRepository.save(history);
     }
 }
-

@@ -1,9 +1,9 @@
 package com.contractsys.customer;
 
 import com.contractsys.common.ApiException;
+import com.contractsys.common.PageRequests;
 import com.contractsys.customer.dto.CustomerRequest;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,7 +20,7 @@ public class CustomerService {
     public Page<Customer> list(String keyword, int page, int size) {
         return customerRepository.findByDeletedFalseAndNameContainingIgnoreCase(
                 keyword == null ? "" : keyword,
-                PageRequest.of(Math.max(page - 1, 0), size)
+                PageRequests.of(page, size)
         );
     }
 
@@ -58,4 +58,3 @@ public class CustomerService {
         customer.setRemark(request.remark());
     }
 }
-
