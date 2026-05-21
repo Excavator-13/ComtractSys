@@ -3,9 +3,11 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, UserCheck, Paperclip, Download, Trash2, Upload, RotateCcw } from 'lucide-vue-next'
 import { api } from '../api'
+import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const contract = ref(null)
 const tasks = ref([])
 const attachments = ref([])
@@ -14,6 +16,7 @@ const error = ref('')
 const success = ref('')
 const activeTab = ref('info')
 const uploading = ref(false)
+const hasPermission = (permission) => auth.permissions.includes(permission)
 
 const assignForm = reactive({
   countersignUserIds: [],
@@ -61,9 +64,10 @@ async function loadAttachments() {
 }
 
 async function loadUsers() {
+  if (!hasPermission('contract:assign')) return
   try {
-    const res = await api.get('/users', { params: { page: 1, size: 100 } })
-    users.value = res.data.records
+    const res = await api.get('/users/assignable')
+    users.value = res.data
   } catch {}
 }
 
@@ -208,7 +212,7 @@ onMounted(() => { loadDetail(); loadUsers(); loadAttachments() })
         <button :class="{ selected: activeTab === 'attachments' }" @click="activeTab = 'attachments'">
           附件 ({{ attachments.length }})
         </button>
-        <button v-if="contract.status === 'DRAFT'" :class="{ selected: activeTab === 'assign' }" @click="activeTab = 'assign'">分配人员</button>
+        <button v-if="hasPermission('contract:assign') && contract.status === 'DRAFT'" :class="{ selected: activeTab === 'assign' }" @click="activeTab = 'assign'">分配人员</button>
       </div>
 
       <div v-if="activeTab === 'info'" class="tab-content">
@@ -229,17 +233,17 @@ onMounted(() => { loadDetail(); loadUsers(); loadAttachments() })
         </div>
 
         <div class="row-actions" style="margin-top:16px">
-          <button v-if="contract.status === 'DRAFT'" @click="activeTab = 'assign'">
+          <button v-if="hasPermission('contract:assign') && contract.status === 'DRAFT'" @click="activeTab = 'assign'">
             <UserCheck :size="14" /> 分配人员
           </button>
-          <button v-if="contract.status === 'COUNTERSIGNED'" @click="doFinalize">定稿</button>
-          <button v-if="contract.status === 'REJECTED'" @click="doResubmit">
+          <button v-if="hasPermission('contract:update') && contract.status === 'COUNTERSIGNED'" @click="doFinalize">定稿</button>
+          <button v-if="hasPermission('contract:update') && contract.status === 'REJECTED'" @click="doResubmit">
             <RotateCcw :size="14" /> 重新提交审批
           </button>
-          <button v-if="contract.status === 'FINALIZED'" @click="doApprove('APPROVED')">审批通过</button>
-          <button v-if="contract.status === 'FINALIZED'" @click="doApprove('REJECTED')">审批拒绝</button>
-          <button v-if="contract.status === 'ASSIGNED' && hasPendingTask" @click="doCountersign">会签</button>
-          <button v-if="contract.status === 'APPROVED'" @click="doSign">签订</button>
+          <button v-if="hasPermission('contract:approve') && contract.status === 'FINALIZED'" @click="doApprove('APPROVED')">审批通过</button>
+          <button v-if="hasPermission('contract:approve') && contract.status === 'FINALIZED'" @click="doApprove('REJECTED')">审批拒绝</button>
+          <button v-if="hasPermission('contract:countersign') && contract.status === 'ASSIGNED' && hasPendingTask" @click="doCountersign">会签</button>
+          <button v-if="hasPermission('contract:sign') && contract.status === 'APPROVED'" @click="doSign">签订</button>
         </div>
       </div>
 
@@ -265,7 +269,7 @@ onMounted(() => { loadDetail(); loadUsers(); loadAttachments() })
 
       <div v-if="activeTab === 'attachments'" class="tab-content">
         <div style="margin-bottom:14px">
-          <label class="secondary" style="display:inline-flex;cursor:pointer;min-height:38px;align-items:center;gap:8px;padding:0 14px;border-radius:6px;font-weight:700">
+          <label v-if="hasPermission('contract:update')" class="secondary" style="display:inline-flex;cursor:pointer;min-height:38px;align-items:center;gap:8px;padding:0 14px;border-radius:6px;font-weight:700">
             <Upload :size="16" />
             {{ uploading ? '上传中...' : '选择文件' }}
             <input type="file" hidden @change="handleUpload" :disabled="uploading" />
@@ -284,14 +288,14 @@ onMounted(() => { loadDetail(); loadUsers(); loadAttachments() })
               <td>{{ a.uploadedAt?.slice(0, 16) }}</td>
               <td class="row-actions">
                 <button @click="downloadAttachment(a)"><Download :size="14" /> 下载</button>
-                <button @click="deleteAttachment(a)"><Trash2 :size="14" /> 删除</button>
+                <button v-if="hasPermission('contract:update')" @click="deleteAttachment(a)"><Trash2 :size="14" /> 删除</button>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <div v-if="activeTab === 'assign'" class="tab-content">
+      <div v-if="activeTab === 'assign' && hasPermission('contract:assign')" class="tab-content">
         <div class="form-grid single">
           <label>会签人员
             <select v-model="assignForm.countersignUserIds" multiple style="min-height:100px">

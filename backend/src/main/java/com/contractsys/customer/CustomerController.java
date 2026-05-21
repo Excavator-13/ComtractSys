@@ -1,6 +1,7 @@
 package com.contractsys.customer;
 
 import com.contractsys.auth.AuthService;
+import com.contractsys.auth.RequirePermission;
 import com.contractsys.common.ApiResponse;
 import com.contractsys.common.PageResponse;
 import com.contractsys.customer.dto.CustomerRequest;
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/customers")
+@RequirePermission("customer:manage")
 public class CustomerController {
     private final CustomerService customerService;
     private final AuthService authService;
@@ -50,4 +52,3 @@ public class CustomerController {
         return ApiResponse.ok(null);
     }
 }
-

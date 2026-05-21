@@ -1,20 +1,27 @@
 package com.contractsys.user;
 
 import com.contractsys.auth.AuthService;
+import com.contractsys.auth.RequirePermission;
 import com.contractsys.auth.dto.UserView;
 import com.contractsys.common.ApiException;
 import com.contractsys.common.ApiResponse;
 import com.contractsys.common.PageResponse;
+import com.contractsys.user.dto.AssignRolesRequest;
+import com.contractsys.user.dto.UserCreateRequest;
+import com.contractsys.user.dto.UserStatusRequest;
+import com.contractsys.user.dto.UserUpdateRequest;
+import jakarta.validation.Valid;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/users")
+@RequirePermission("user:manage")
 public class UserController {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
@@ -54,24 +61,37 @@ public class UserController {
         return ApiResponse.ok(UserView.from(user));
     }
 
+    @GetMapping("/assignable")
+    @RequirePermission({"user:manage", "contract:assign"})
+    public ApiResponse<List<UserView>> assignableUsers(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        authService.requireUser(authorization);
+        return ApiResponse.ok(userRepository.findByDeletedFalse(PageRequest.of(0, 500, Sort.by("username").ascending()))
+                .getContent()
+                .stream()
+                .filter(user -> user.getStatus() == UserStatus.ENABLED)
+                .map(UserView::from)
+                .toList());
+    }
+
     @PostMapping
     public ApiResponse<UserView> create(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                         @RequestBody Map<String, Object> body) {
+                                         @Valid @RequestBody UserCreateRequest request) {
         authService.requireUser(authorization);
-        String username = (String) body.get("username");
-        String password = (String) body.get("password");
-        if (username == null || username.isBlank() || password == null || password.isBlank()) {
-            throw ApiException.badRequest("用户名和密码不能为空");
-        }
-        if (userRepository.existsByUsernameAndDeletedFalse(username)) {
+        if (userRepository.existsByUsernameAndDeletedFalse(request.username())) {
             throw ApiException.conflict("用户名已存在");
         }
         SysUser user = new SysUser();
-        user.setUsername(username);
-        user.setDisplayName((String) body.getOrDefault("displayName", username));
-        user.setPasswordHash(passwordEncoder.encode(password));
-        user.setPhone((String) body.get("phone"));
-        user.setEmail((String) body.get("email"));
+        user.setUsername(request.username());
+        user.setDisplayName(request.displayName() == null || request.displayName().isBlank() ? request.username() : request.displayName());
+        user.setPasswordHash(passwordEncoder.encode(request.password()));
+        user.setPhone(request.phone());
+        user.setEmail(request.email());
+        if (request.roleIds() != null) {
+            request.roleIds().forEach(roleId -> roleRepository.findById(roleId).ifPresent(user.getRoles()::add));
+        }
+        if (user.getRoles().isEmpty()) {
+            roleRepository.findByRoleCode("ROLE_NEW_USER").ifPresent(user.getRoles()::add);
+        }
         userRepository.save(user);
         return ApiResponse.ok("创建成功", UserView.from(user));
     }
@@ -79,15 +99,15 @@ public class UserController {
     @PutMapping("/{id}")
     public ApiResponse<UserView> update(@RequestHeader(value = "Authorization", required = false) String authorization,
                                          @PathVariable Long id,
-                                         @RequestBody Map<String, Object> body) {
+                                         @Valid @RequestBody UserUpdateRequest request) {
         authService.requireUser(authorization);
         SysUser user = userRepository.findById(id).filter(u -> !u.isDeleted())
                 .orElseThrow(() -> ApiException.notFound("用户不存在"));
-        if (body.containsKey("displayName")) user.setDisplayName((String) body.get("displayName"));
-        if (body.containsKey("phone")) user.setPhone((String) body.get("phone"));
-        if (body.containsKey("email")) user.setEmail((String) body.get("email"));
-        if (body.containsKey("password") && body.get("password") != null && !((String) body.get("password")).isBlank()) {
-            user.setPasswordHash(passwordEncoder.encode((String) body.get("password")));
+        if (request.displayName() != null) user.setDisplayName(request.displayName());
+        if (request.phone() != null) user.setPhone(request.phone());
+        if (request.email() != null) user.setEmail(request.email());
+        if (request.password() != null && !request.password().isBlank()) {
+            user.setPasswordHash(passwordEncoder.encode(request.password()));
         }
         userRepository.save(user);
         return ApiResponse.ok("更新成功", UserView.from(user));
@@ -96,11 +116,14 @@ public class UserController {
     @PatchMapping("/{id}/status")
     public ApiResponse<Void> toggleStatus(@RequestHeader(value = "Authorization", required = false) String authorization,
                                            @PathVariable Long id,
-                                           @RequestBody Map<String, String> body) {
+                                           @Valid @RequestBody UserStatusRequest request) {
         authService.requireUser(authorization);
         SysUser user = userRepository.findById(id).filter(u -> !u.isDeleted())
                 .orElseThrow(() -> ApiException.notFound("用户不存在"));
-        user.setStatus("DISABLED".equals(body.get("status")) ? UserStatus.DISABLED : UserStatus.ENABLED);
+        if ("admin".equals(user.getUsername()) && request.status() == UserStatus.DISABLED) {
+            throw ApiException.conflict("内置管理员不能禁用");
+        }
+        user.setStatus(request.status());
         userRepository.save(user);
         return ApiResponse.ok(null);
     }
@@ -111,6 +134,9 @@ public class UserController {
         authService.requireUser(authorization);
         SysUser user = userRepository.findById(id).filter(u -> !u.isDeleted())
                 .orElseThrow(() -> ApiException.notFound("用户不存在"));
+        if ("admin".equals(user.getUsername())) {
+            throw ApiException.conflict("内置管理员不能删除");
+        }
         user.setDeleted(true);
         userRepository.save(user);
         return ApiResponse.ok(null);
@@ -119,17 +145,16 @@ public class UserController {
     @PutMapping("/{id}/roles")
     public ApiResponse<UserView> assignRoles(@RequestHeader(value = "Authorization", required = false) String authorization,
                                               @PathVariable Long id,
-                                              @RequestBody Map<String, Object> body) {
+                                              @Valid @RequestBody AssignRolesRequest request) {
         authService.requireUser(authorization);
         SysUser user = userRepository.findById(id).filter(u -> !u.isDeleted())
                 .orElseThrow(() -> ApiException.notFound("用户不存在"));
+        if ("admin".equals(user.getUsername()) && (request.roleIds() == null || request.roleIds().isEmpty())) {
+            throw ApiException.conflict("内置管理员至少需要保留一个角色");
+        }
         user.getRoles().clear();
-        @SuppressWarnings("unchecked")
-        var roleIds = (java.util.List<Number>) body.get("roleIds");
-        if (roleIds != null) {
-            for (Number rid : roleIds) {
-                roleRepository.findById(rid.longValue()).ifPresent(user.getRoles()::add);
-            }
+        if (request.roleIds() != null) {
+            request.roleIds().forEach(roleId -> roleRepository.findById(roleId).ifPresent(user.getRoles()::add));
         }
         userRepository.save(user);
         return ApiResponse.ok("角色分配成功", UserView.from(user));

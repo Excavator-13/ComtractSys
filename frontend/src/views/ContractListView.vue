@@ -3,8 +3,10 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { Search, FilePlus2, Eye, Pencil, Trash2, RefreshCcw } from 'lucide-vue-next'
 import { api } from '../api'
+import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
+const auth = useAuthStore()
 const contracts = ref([])
 const loading = ref(false)
 const error = ref('')
@@ -31,6 +33,7 @@ function statusLabel(status) {
 }
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
+const hasPermission = (permission) => auth.permissions.includes(permission)
 
 async function loadContracts() {
   loading.value = true
@@ -80,7 +83,7 @@ onMounted(loadContracts)
   <div>
     <div class="section-title">
       <h2>合同管理</h2>
-      <button class="primary" @click="router.push('/contracts/create')"><FilePlus2 :size="16" /> 起草合同</button>
+      <button v-if="hasPermission('contract:create')" class="primary" @click="router.push('/contracts/create')"><FilePlus2 :size="16" /> 起草合同</button>
     </div>
 
     <div class="search-bar">
@@ -111,8 +114,8 @@ onMounted(loadContracts)
             <td>{{ c.drafterName }}</td>
             <td class="row-actions">
               <button @click="router.push(`/contracts/${c.id}`)"><Eye :size="14" /> 详情</button>
-              <button v-if="c.status === 'DRAFT' || c.status === 'REJECTED'" @click="editContract(c)"><Pencil :size="14" /> 编辑</button>
-              <button v-if="c.status === 'DRAFT' || c.status === 'CANCELLED'" @click="deleteContract(c)"><Trash2 :size="14" /> 删除</button>
+              <button v-if="hasPermission('contract:update') && (c.status === 'DRAFT' || c.status === 'REJECTED')" @click="editContract(c)"><Pencil :size="14" /> 编辑</button>
+              <button v-if="hasPermission('contract:delete') && (c.status === 'DRAFT' || c.status === 'CANCELLED')" @click="deleteContract(c)"><Trash2 :size="14" /> 删除</button>
             </td>
           </tr>
           <tr v-if="!loading && contracts.length === 0"><td colspan="6" class="muted" style="text-align:center">暂无数据</td></tr>

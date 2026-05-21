@@ -13,17 +13,23 @@ const auth = useAuthStore()
 
 const menuItems = [
   { path: '/dashboard', label: '工作台', icon: LayoutDashboard },
-  { path: '/contracts', label: '合同管理', icon: ClipboardList },
-  { path: '/contracts/create', label: '起草合同', icon: FilePlus2 },
-  { path: '/tasks', label: '我的待办', icon: Handshake },
-  { path: '/customers', label: '客户管理', icon: UsersRound },
+  { path: '/contracts', label: '合同管理', icon: ClipboardList, permission: 'contract:view' },
+  { path: '/contracts/create', label: '起草合同', icon: FilePlus2, permission: 'contract:create' },
+  { path: '/tasks', label: '我的待办', icon: Handshake, anyPermission: ['contract:countersign', 'contract:approve', 'contract:sign', 'contract:update'] },
+  { path: '/customers', label: '客户管理', icon: UsersRound, permission: 'customer:manage' },
 ]
 
 const sysItems = [
-  { path: '/system/users', label: '用户管理', icon: UserCog },
-  { path: '/system/roles', label: '角色管理', icon: ShieldCheck },
-  { path: '/system/logs', label: '操作日志', icon: ScrollText },
+  { path: '/system/users', label: '用户管理', icon: UserCog, permission: 'user:manage' },
+  { path: '/system/roles', label: '角色管理', icon: ShieldCheck, permission: 'role:manage' },
+  { path: '/system/logs', label: '操作日志', icon: ScrollText, permission: 'log:view' },
 ]
+
+function canAccess(item) {
+  if (item.permission) return auth.permissions.includes(item.permission)
+  if (item.anyPermission) return item.anyPermission.some(p => auth.permissions.includes(p))
+  return true
+}
 
 const hasSystemAccess = computed(() =>
   auth.permissions.some(p => ['user:manage', 'role:manage', 'permission:manage', 'log:view'].includes(p))
@@ -56,6 +62,7 @@ function logout() {
       <nav>
         <button
           v-for="item in menuItems" :key="item.path"
+          v-show="canAccess(item)"
           :class="{ selected: isActive(item.path) }"
           @click="router.push(item.path)"
         >
@@ -72,6 +79,7 @@ function logout() {
           <div v-show="sysMenuOpen" class="sys-sub">
             <button
               v-for="item in sysItems" :key="item.path"
+              v-show="canAccess(item)"
               :class="{ selected: route.path === item.path }"
               @click="router.push(item.path)"
             >

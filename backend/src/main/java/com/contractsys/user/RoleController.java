@@ -1,16 +1,24 @@
 package com.contractsys.user;
 
 import com.contractsys.auth.AuthService;
+import com.contractsys.auth.RequirePermission;
 import com.contractsys.common.ApiException;
 import com.contractsys.common.ApiResponse;
+import com.contractsys.user.dto.AssignPermissionsRequest;
+import com.contractsys.user.dto.RoleRequest;
+import com.contractsys.user.dto.RoleUpdateRequest;
+import com.contractsys.user.dto.RoleView;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/v1/roles")
+@RequirePermission("role:manage")
 public class RoleController {
+    private static final Set<String> BUILT_IN_ROLES = Set.of("ROLE_ADMIN", "ROLE_CONTRACT_ADMIN", "ROLE_OPERATOR", "ROLE_NEW_USER");
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
     private final AuthService authService;
@@ -23,61 +31,64 @@ public class RoleController {
     }
 
     @GetMapping
-    public ApiResponse<List<SysRole>> list(@RequestHeader(value = "Authorization", required = false) String authorization) {
+    public ApiResponse<List<RoleView>> list(@RequestHeader(value = "Authorization", required = false) String authorization) {
         authService.requireUser(authorization);
-        return ApiResponse.ok(roleRepository.findAll());
+        return ApiResponse.ok(roleRepository.findAll().stream().map(RoleView::from).toList());
     }
 
     @PostMapping
-    public ApiResponse<SysRole> create(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                        @RequestBody Map<String, String> body) {
+    public ApiResponse<RoleView> create(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                        @Valid @RequestBody RoleRequest request) {
         authService.requireUser(authorization);
-        String code = body.get("roleCode");
-        String name = body.get("roleName");
-        if (code == null || code.isBlank() || name == null || name.isBlank()) {
-            throw ApiException.badRequest("角色编码和名称不能为空");
+        if (roleRepository.existsByRoleCode(request.roleCode())) {
+            throw ApiException.conflict("角色编码已存在");
         }
         SysRole role = new SysRole();
-        role.setRoleCode(code);
-        role.setRoleName(name);
-        role.setDescription(body.getOrDefault("description", ""));
-        return ApiResponse.ok("创建成功", roleRepository.save(role));
+        role.setRoleCode(request.roleCode());
+        role.setRoleName(request.roleName());
+        role.setDescription(request.description());
+        return ApiResponse.ok("创建成功", RoleView.from(roleRepository.save(role)));
     }
 
     @PutMapping("/{id}")
-    public ApiResponse<SysRole> update(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public ApiResponse<RoleView> update(@RequestHeader(value = "Authorization", required = false) String authorization,
                                         @PathVariable Long id,
-                                        @RequestBody Map<String, String> body) {
+                                        @Valid @RequestBody RoleUpdateRequest request) {
         authService.requireUser(authorization);
         SysRole role = roleRepository.findById(id).orElseThrow(() -> ApiException.notFound("角色不存在"));
-        if (body.containsKey("roleName")) role.setRoleName(body.get("roleName"));
-        if (body.containsKey("description")) role.setDescription(body.get("description"));
-        return ApiResponse.ok(roleRepository.save(role));
+        if (BUILT_IN_ROLES.contains(role.getRoleCode()) && !role.getRoleName().equals(request.roleName())) {
+            throw ApiException.conflict("系统内置角色名称不允许修改");
+        }
+        role.setRoleName(request.roleName());
+        role.setDescription(request.description());
+        return ApiResponse.ok(RoleView.from(roleRepository.save(role)));
     }
 
     @DeleteMapping("/{id}")
     public ApiResponse<Void> delete(@RequestHeader(value = "Authorization", required = false) String authorization,
                                      @PathVariable Long id) {
         authService.requireUser(authorization);
-        if (!roleRepository.existsById(id)) throw ApiException.notFound("角色不存在");
-        roleRepository.deleteById(id);
+        SysRole role = roleRepository.findById(id).orElseThrow(() -> ApiException.notFound("角色不存在"));
+        if (BUILT_IN_ROLES.contains(role.getRoleCode())) {
+            throw ApiException.conflict("系统内置角色不能删除");
+        }
+        roleRepository.delete(role);
         return ApiResponse.ok(null);
     }
 
     @PutMapping("/{id}/permissions")
-    public ApiResponse<SysRole> assignPermissions(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public ApiResponse<RoleView> assignPermissions(@RequestHeader(value = "Authorization", required = false) String authorization,
                                                    @PathVariable Long id,
-                                                   @RequestBody Map<String, Object> body) {
+                                                   @Valid @RequestBody AssignPermissionsRequest request) {
         authService.requireUser(authorization);
         SysRole role = roleRepository.findById(id).orElseThrow(() -> ApiException.notFound("角色不存在"));
-        role.getPermissions().clear();
-        @SuppressWarnings("unchecked")
-        var permIds = (java.util.List<Number>) body.get("permissionIds");
-        if (permIds != null) {
-            for (Number pid : permIds) {
-                permissionRepository.findById(pid.longValue()).ifPresent(role.getPermissions()::add);
-            }
+        if ("ROLE_ADMIN".equals(role.getRoleCode()) && (request.permissionIds() == null || request.permissionIds().isEmpty())) {
+            throw ApiException.conflict("系统管理员角色不能清空权限");
         }
-        return ApiResponse.ok(roleRepository.save(role));
+        role.getPermissions().clear();
+        if (request.permissionIds() != null) {
+            request.permissionIds().forEach(permissionId -> permissionRepository.findById(permissionId).ifPresent(role.getPermissions()::add));
+        }
+        return ApiResponse.ok(RoleView.from(roleRepository.save(role)));
     }
 }

@@ -29,10 +29,13 @@ public class DataInitializer implements CommandLineRunner {
         List<SysPermission> permissions = seedPermissions();
         SysRole admin = seedRole("ROLE_ADMIN", "系统管理员", "拥有全部系统权限", permissions);
         seedRole("ROLE_CONTRACT_ADMIN", "合同管理员", "负责合同分配和流程跟踪", permissions.stream()
-                .filter(p -> p.getPermissionCode().startsWith("contract:") || p.getPermissionCode().equals("log:view"))
+                .filter(p -> List.of("contract:view", "contract:assign", "contract:delete", "log:view").contains(p.getPermissionCode()))
                 .toList());
         seedRole("ROLE_OPERATOR", "合同操作员", "负责合同业务操作", permissions.stream()
-                .filter(p -> p.getPermissionCode().startsWith("contract:") || p.getPermissionCode().startsWith("customer:"))
+                .filter(p -> List.of(
+                        "contract:create", "contract:update", "contract:view", "contract:countersign",
+                        "contract:approve", "contract:sign", "customer:manage"
+                ).contains(p.getPermissionCode()))
                 .toList());
         seedRole("ROLE_NEW_USER", "新用户", "注册后的默认角色", List.of());
 
@@ -87,4 +90,3 @@ public class DataInitializer implements CommandLineRunner {
         return roleRepository.save(role);
     }
 }
-

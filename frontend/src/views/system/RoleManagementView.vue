@@ -46,13 +46,17 @@ function openEdit(r) {
 }
 
 async function save() {
-  if (!form.roleCode || !form.roleName) {
-    error.value = '角色编码和名称不能为空'
+  if (!form.roleCode && !editingId.value) {
+    error.value = '角色编码不能为空'
+    return
+  }
+  if (!form.roleName) {
+    error.value = '角色名称不能为空'
     return
   }
   try {
     if (editingId.value) {
-      await api.put(`/roles/${editingId.value}`, form)
+      await api.put(`/roles/${editingId.value}`, { roleName: form.roleName, description: form.description })
     } else {
       await api.post('/roles', form)
     }

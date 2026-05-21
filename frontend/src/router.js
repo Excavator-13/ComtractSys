@@ -13,6 +13,12 @@ import UserManagementView from './views/system/UserManagementView.vue'
 import RoleManagementView from './views/system/RoleManagementView.vue'
 import LogView from './views/system/LogView.vue'
 
+function hasAccess(required, permissions) {
+  if (!required) return true
+  if (Array.isArray(required)) return required.some(p => permissions.includes(p))
+  return permissions.includes(required)
+}
+
 const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -24,14 +30,14 @@ const router = createRouter({
       component: MainLayout,
       children: [
         { path: 'dashboard', component: DashboardView, meta: { title: '工作台' } },
-        { path: 'contracts', component: ContractListView, meta: { title: '合同管理' } },
-        { path: 'contracts/create', component: ContractCreateView, meta: { title: '起草合同' } },
-        { path: 'contracts/:id', component: ContractDetailView, meta: { title: '合同详情' } },
-        { path: 'customers', component: CustomerListView, meta: { title: '客户管理' } },
-        { path: 'tasks', component: MyTasksView, meta: { title: '我的待办' } },
-        { path: 'system/users', component: UserManagementView, meta: { title: '用户管理' } },
-        { path: 'system/roles', component: RoleManagementView, meta: { title: '角色管理' } },
-        { path: 'system/logs', component: LogView, meta: { title: '操作日志' } },
+        { path: 'contracts', component: ContractListView, meta: { title: '合同管理', permission: 'contract:view' } },
+        { path: 'contracts/create', component: ContractCreateView, meta: { title: '起草合同', permission: 'contract:create' } },
+        { path: 'contracts/:id', component: ContractDetailView, meta: { title: '合同详情', permission: 'contract:view' } },
+        { path: 'customers', component: CustomerListView, meta: { title: '客户管理', permission: 'customer:manage' } },
+        { path: 'tasks', component: MyTasksView, meta: { title: '我的待办', permission: ['contract:countersign', 'contract:approve', 'contract:sign', 'contract:update'] } },
+        { path: 'system/users', component: UserManagementView, meta: { title: '用户管理', permission: 'user:manage' } },
+        { path: 'system/roles', component: RoleManagementView, meta: { title: '角色管理', permission: 'role:manage' } },
+        { path: 'system/logs', component: LogView, meta: { title: '操作日志', permission: 'log:view' } },
       ]
     }
   ]
@@ -41,6 +47,9 @@ router.beforeEach((to) => {
   const auth = useAuthStore()
   if (to.path !== '/login' && to.path !== '/register' && !auth.isLoggedIn) {
     return '/login'
+  }
+  if (!hasAccess(to.meta.permission, auth.permissions)) {
+    return '/dashboard'
   }
 })
 

@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -83,6 +84,24 @@ public class AuthService {
         return UserView.from(requireUser(authorization));
     }
 
+    public void requireAnyPermission(SysUser user, Collection<String> requiredPermissions) {
+        if (requiredPermissions == null || requiredPermissions.isEmpty()) {
+            return;
+        }
+        boolean allowed = user.getRoles().stream()
+                .flatMap(role -> role.getPermissions().stream())
+                .anyMatch(permission -> requiredPermissions.contains(permission.getPermissionCode()));
+        if (!allowed) {
+            throw ApiException.forbidden("无权限，需要权限: " + String.join(",", requiredPermissions));
+        }
+    }
+
+    public boolean hasPermission(SysUser user, String permissionCode) {
+        return user.getRoles().stream()
+                .flatMap(role -> role.getPermissions().stream())
+                .anyMatch(permission -> permission.getPermissionCode().equals(permissionCode));
+    }
+
     private String parseToken(String authorization) {
         if (authorization == null || !authorization.startsWith("Bearer ")) {
             throw ApiException.unauthorized("请先登录");
@@ -96,4 +115,3 @@ public class AuthService {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 }
-
