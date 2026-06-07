@@ -1,7 +1,7 @@
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowLeft } from 'lucide-vue-next'
+import { ArrowLeft, Paperclip, Upload, X } from 'lucide-vue-next'
 import { api } from '../api'
 
 const router = useRouter()
@@ -63,6 +63,16 @@ function handleFiles(e) {
   files.value = Array.from(e.target.files || [])
 }
 
+function removeFile(index) {
+  files.value.splice(index, 1)
+}
+
+function fileSizeLabel(bytes) {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
 onMounted(loadCustomers)
 </script>
 
@@ -85,10 +95,29 @@ onMounted(loadCustomers)
         <label>开始日期<input v-model="form.beginDate" type="date" required /></label>
         <label>结束日期<input v-model="form.endDate" type="date" required /></label>
         <label class="full">合同内容<textarea v-model="form.content" rows="8" placeholder="输入合同正文内容" required /></label>
-        <label class="full">附件
-          <input type="file" multiple accept=".doc,.docx,.jpg,.jpeg,.png,.bmp,.gif,.pdf" @change="handleFiles" />
-          <span class="muted">支持 doc/docx/jpg/png/pdf，最大 10MB</span>
-        </label>
+        <div class="full attachment-box">
+          <div class="attachment-head">
+            <div>
+              <strong>附件</strong>
+              <p class="muted">支持 doc/docx/jpg/png/pdf，最大 10MB，可随合同一起提交。</p>
+            </div>
+            <label class="secondary attach-trigger">
+              <Upload :size="16" /> 选择附件
+              <input type="file" hidden multiple accept=".doc,.docx,.jpg,.jpeg,.png,.bmp,.gif,.pdf" @change="handleFiles" />
+            </label>
+          </div>
+          <div v-if="files.length" class="attachment-list">
+            <div v-for="(file, index) in files" :key="file.name + index" class="attachment-item">
+              <Paperclip :size="16" />
+              <span>{{ file.name }}</span>
+              <small>{{ fileSizeLabel(file.size) }}</small>
+              <button class="icon mini" type="button" @click="removeFile(index)" title="移除附件">
+                <X :size="14" />
+              </button>
+            </div>
+          </div>
+          <p v-else class="empty-hint">尚未选择附件</p>
+        </div>
       </div>
       <button class="primary" :disabled="loading" @click="submit">{{ loading ? '提交中...' : '提交起草' }}</button>
     </div>

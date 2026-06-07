@@ -73,7 +73,15 @@ async function loadUsers() {
 
 async function assign() {
   try {
-    await api.post(`/contracts/${route.params.id}/assign`, assignForm)
+    if (!assignForm.countersignUserIds.length || !assignForm.approvalUserIds.length || !assignForm.signUserId) {
+      error.value = '请选择会签人员、审批人员和签订人员'
+      return
+    }
+    await api.post(`/contracts/${route.params.id}/assign`, {
+      countersignUserIds: assignForm.countersignUserIds,
+      approvalUserIds: assignForm.approvalUserIds,
+      signUserId: Number(assignForm.signUserId)
+    })
     success.value = '分配成功'
     await loadDetail()
     activeTab.value = 'info'
@@ -195,6 +203,21 @@ const canApproveCurrent = computed(() => hasPermission('contract:approve') && co
 const canSignCurrent = computed(() => hasPermission('contract:sign') && contract.value?.status === 'APPROVED' && pendingTask('SIGN'))
 const canResubmitCurrent = computed(() => hasPermission('contract:update') && contract.value?.status === 'REJECTED' && contract.value?.drafterId === auth.user?.id)
 
+function userName(user) {
+  return user.displayName || user.username
+}
+
+function toggleUser(field, userId) {
+  const list = assignForm[field]
+  const idx = list.indexOf(userId)
+  if (idx >= 0) list.splice(idx, 1)
+  else list.push(userId)
+}
+
+function isSelected(field, userId) {
+  return assignForm[field].includes(userId)
+}
+
 onMounted(() => {
   if (route.query.tab) activeTab.value = route.query.tab
   loadDetail()
@@ -308,23 +331,66 @@ onMounted(() => {
       </div>
 
       <div v-if="activeTab === 'assign' && canAssignCurrent" class="tab-content">
-        <div class="form-grid single">
-          <label>会签人员
-            <select v-model="assignForm.countersignUserIds" multiple style="min-height:100px">
-              <option v-for="u in assignableUsers" :key="u.id" :value="u.id">{{ u.displayName || u.username }}</option>
-            </select>
-          </label>
-          <label>审批人员
-            <select v-model="assignForm.approvalUserIds" multiple style="min-height:100px">
-              <option v-for="u in assignableUsers" :key="u.id" :value="u.id">{{ u.displayName || u.username }}</option>
-            </select>
-          </label>
-          <label>签订人员
-            <select v-model="assignForm.signUserId">
-              <option value="" disabled>请选择签订人员</option>
-              <option v-for="u in assignableUsers" :key="u.id" :value="u.id">{{ u.displayName || u.username }}</option>
-            </select>
-          </label>
+        <div class="assignment-panel">
+          <section class="assign-section">
+            <div class="assign-section-head">
+              <h3>会签人员</h3>
+              <span class="muted">可多选，全部完成后进入定稿</span>
+            </div>
+            <div class="people-grid">
+              <button
+                v-for="u in assignableUsers"
+                :key="'counter-' + u.id"
+                type="button"
+                class="person-option"
+                :class="{ selected: isSelected('countersignUserIds', u.id) }"
+                @click="toggleUser('countersignUserIds', u.id)"
+              >
+                <span>{{ userName(u) }}</span>
+                <small>{{ u.username }}</small>
+              </button>
+            </div>
+          </section>
+
+          <section class="assign-section">
+            <div class="assign-section-head">
+              <h3>审批人员</h3>
+              <span class="muted">可多选，全部通过后进入签订</span>
+            </div>
+            <div class="people-grid">
+              <button
+                v-for="u in assignableUsers"
+                :key="'approval-' + u.id"
+                type="button"
+                class="person-option"
+                :class="{ selected: isSelected('approvalUserIds', u.id) }"
+                @click="toggleUser('approvalUserIds', u.id)"
+              >
+                <span>{{ userName(u) }}</span>
+                <small>{{ u.username }}</small>
+              </button>
+            </div>
+          </section>
+
+          <section class="assign-section">
+            <div class="assign-section-head">
+              <h3>签订人员</h3>
+              <span class="muted">单选</span>
+            </div>
+            <div class="people-grid">
+              <button
+                v-for="u in assignableUsers"
+                :key="'sign-' + u.id"
+                type="button"
+                class="person-option"
+                :class="{ selected: assignForm.signUserId === u.id }"
+                @click="assignForm.signUserId = u.id"
+              >
+                <span>{{ userName(u) }}</span>
+                <small>{{ u.username }}</small>
+              </button>
+            </div>
+          </section>
         </div>
         <button class="primary" @click="assign">确认分配</button>
       </div>
