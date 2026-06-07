@@ -5,6 +5,8 @@ import com.contractsys.auth.RequirePermission;
 import com.contractsys.common.ApiResponse;
 import com.contractsys.common.PageResponse;
 import com.contractsys.customer.dto.CustomerRequest;
+import com.contractsys.log.OperationLogService;
+import com.contractsys.user.SysUser;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,10 +16,13 @@ import org.springframework.web.bind.annotation.*;
 public class CustomerController {
     private final CustomerService customerService;
     private final AuthService authService;
+    private final OperationLogService operationLogService;
 
-    public CustomerController(CustomerService customerService, AuthService authService) {
+    public CustomerController(CustomerService customerService, AuthService authService,
+                              OperationLogService operationLogService) {
         this.customerService = customerService;
         this.authService = authService;
+        this.operationLogService = operationLogService;
     }
 
     @GetMapping
@@ -30,21 +35,26 @@ public class CustomerController {
 
     @PostMapping
     public ApiResponse<Customer> create(@Valid @RequestBody CustomerRequest request) {
-        authService.requireUser();
-        return ApiResponse.ok(customerService.create(request));
+        SysUser user = authService.requireUser();
+        Customer customer = customerService.create(request);
+        operationLogService.record(user, "CUSTOMER", "新增客户", "CUSTOMER", customer.getId(), customer.getName());
+        return ApiResponse.ok(customer);
     }
 
     @PutMapping("/{id}")
     public ApiResponse<Customer> update(@PathVariable Long id,
                                         @Valid @RequestBody CustomerRequest request) {
-        authService.requireUser();
-        return ApiResponse.ok(customerService.update(id, request));
+        SysUser user = authService.requireUser();
+        Customer customer = customerService.update(id, request);
+        operationLogService.record(user, "CUSTOMER", "修改客户", "CUSTOMER", customer.getId(), customer.getName());
+        return ApiResponse.ok(customer);
     }
 
     @DeleteMapping("/{id}")
     public ApiResponse<Void> delete(@PathVariable Long id) {
-        authService.requireUser();
+        SysUser user = authService.requireUser();
         customerService.delete(id);
+        operationLogService.record(user, "CUSTOMER", "删除客户", "CUSTOMER", id, "删除客户");
         return ApiResponse.ok(null);
     }
 }

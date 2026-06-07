@@ -4,6 +4,7 @@ import com.contractsys.auth.AuthService;
 import com.contractsys.auth.RequirePermission;
 import com.contractsys.common.ApiException;
 import com.contractsys.common.ApiResponse;
+import com.contractsys.log.OperationLogService;
 import com.contractsys.user.dto.AssignPermissionsRequest;
 import com.contractsys.user.dto.RoleRequest;
 import com.contractsys.user.dto.RoleUpdateRequest;
@@ -21,13 +22,18 @@ public class RoleController {
     private static final Set<String> BUILT_IN_ROLES = Set.of("ROLE_ADMIN", "ROLE_CONTRACT_ADMIN", "ROLE_OPERATOR", "ROLE_NEW_USER");
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
+    private final UserRepository userRepository;
     private final AuthService authService;
+    private final OperationLogService operationLogService;
 
     public RoleController(RoleRepository roleRepository, PermissionRepository permissionRepository,
-                          AuthService authService) {
+                          UserRepository userRepository, AuthService authService,
+                          OperationLogService operationLogService) {
         this.roleRepository = roleRepository;
         this.permissionRepository = permissionRepository;
+        this.userRepository = userRepository;
         this.authService = authService;
+        this.operationLogService = operationLogService;
     }
 
     @GetMapping
@@ -38,7 +44,7 @@ public class RoleController {
 
     @PostMapping
     public ApiResponse<RoleView> create(@Valid @RequestBody RoleRequest request) {
-        authService.requireUser();
+        SysUser operator = authService.requireUser();
         if (roleRepository.existsByRoleCode(request.roleCode())) {
             throw ApiException.conflict("角色编码已存在");
         }
@@ -46,45 +52,58 @@ public class RoleController {
         role.setRoleCode(request.roleCode());
         role.setRoleName(request.roleName());
         role.setDescription(request.description());
-        return ApiResponse.ok("创建成功", RoleView.from(roleRepository.save(role)));
+        SysRole saved = roleRepository.save(role);
+        operationLogService.record(operator, "ROLE", "新增角色", "ROLE", saved.getId(), saved.getRoleCode());
+        return ApiResponse.ok("创建成功", RoleView.from(saved));
     }
 
     @PutMapping("/{id}")
     public ApiResponse<RoleView> update(@PathVariable Long id,
                                         @Valid @RequestBody RoleUpdateRequest request) {
-        authService.requireUser();
+        SysUser operator = authService.requireUser();
         SysRole role = roleRepository.findById(id).orElseThrow(() -> ApiException.notFound("角色不存在"));
         if (BUILT_IN_ROLES.contains(role.getRoleCode()) && !role.getRoleName().equals(request.roleName())) {
             throw ApiException.conflict("系统内置角色名称不允许修改");
         }
         role.setRoleName(request.roleName());
         role.setDescription(request.description());
-        return ApiResponse.ok(RoleView.from(roleRepository.save(role)));
+        SysRole saved = roleRepository.save(role);
+        operationLogService.record(operator, "ROLE", "修改角色", "ROLE", saved.getId(), saved.getRoleCode());
+        return ApiResponse.ok(RoleView.from(saved));
     }
 
     @DeleteMapping("/{id}")
     public ApiResponse<Void> delete(@PathVariable Long id) {
-        authService.requireUser();
+        SysUser operator = authService.requireUser();
         SysRole role = roleRepository.findById(id).orElseThrow(() -> ApiException.notFound("角色不存在"));
         if (BUILT_IN_ROLES.contains(role.getRoleCode())) {
             throw ApiException.conflict("系统内置角色不能删除");
         }
+        if (userRepository.existsByRoles_Id(role.getId())) {
+            throw ApiException.conflict("角色已被用户绑定，不能删除");
+        }
         roleRepository.delete(role);
+        operationLogService.record(operator, "ROLE", "删除角色", "ROLE", role.getId(), role.getRoleCode());
         return ApiResponse.ok(null);
     }
 
     @PutMapping("/{id}/permissions")
     public ApiResponse<RoleView> assignPermissions(@PathVariable Long id,
                                                    @Valid @RequestBody AssignPermissionsRequest request) {
-        authService.requireUser();
+        SysUser operator = authService.requireUser();
         SysRole role = roleRepository.findById(id).orElseThrow(() -> ApiException.notFound("角色不存在"));
         if ("ROLE_ADMIN".equals(role.getRoleCode()) && (request.permissionIds() == null || request.permissionIds().isEmpty())) {
             throw ApiException.conflict("系统管理员角色不能清空权限");
         }
         role.getPermissions().clear();
         if (request.permissionIds() != null) {
-            request.permissionIds().forEach(permissionId -> permissionRepository.findById(permissionId).ifPresent(role.getPermissions()::add));
+            request.permissionIds().forEach(permissionId -> role.getPermissions().add(
+                    permissionRepository.findById(permissionId)
+                            .orElseThrow(() -> ApiException.notFound("权限不存在: " + permissionId))
+            ));
         }
-        return ApiResponse.ok(RoleView.from(roleRepository.save(role)));
+        SysRole saved = roleRepository.save(role);
+        operationLogService.record(operator, "ROLE", "分配权限", "ROLE", saved.getId(), saved.getRoleCode());
+        return ApiResponse.ok(RoleView.from(saved));
     }
 }

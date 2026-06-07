@@ -210,16 +210,16 @@ class BoundaryIntegrationTest {
 
     @Test
     void assigningContractRejectsUnknownUser() throws Exception {
+        UserLogin operator = createOperatorUser();
         Long customerId = createCustomer();
         Long contractId = createContract(customerId);
-        Long adminUserId = currentUserId();
 
         mockMvc.perform(post("/api/v1/contracts/" + contractId + "/assign")
                         .header("Authorization", bearer())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(String.format("""
-                                {"countersignUserIds":[999999999],"approvalUserIds":[%d],"signUserIds":[%d]}
-                                """, adminUserId, adminUserId)))
+                                {"countersignUserIds":[999999999],"approvalUserIds":[%d],"signUserId":%d}
+                                """, operator.id(), operator.id())))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value(40400));
     }
@@ -275,18 +275,19 @@ class BoundaryIntegrationTest {
     }
 
     @Test
-    void signingRequiresAllSignTasksToFinish() throws Exception {
+    void approvalRequiresAllApprovalTasksToFinishAndSigningIsSingleAssignee() throws Exception {
         UserLogin operator = createOperatorUser();
+        UserLogin secondApprover = createOperatorUser();
         Long customerId = createCustomer();
-        Long contractId = createContract(customerId);
+        Long contractId = createContract(customerId, operator.token());
         Long adminUserId = currentUserId();
 
         mockMvc.perform(post("/api/v1/contracts/" + contractId + "/assign")
                         .header("Authorization", bearer())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(String.format("""
-                                {"countersignUserIds":[%d],"approvalUserIds":[%d],"signUserIds":[%d,%d]}
-                                """, adminUserId, adminUserId, adminUserId, operator.id())))
+                                {"countersignUserIds":[%d],"approvalUserIds":[%d,%d],"signUserId":%d}
+                                """, adminUserId, adminUserId, secondApprover.id(), adminUserId)))
                 .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/v1/contracts/" + contractId + "/countersign")
@@ -296,8 +297,13 @@ class BoundaryIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.contract.status").value("COUNTERSIGNED"));
 
+        mockMvc.perform(get("/api/v1/tasks/my")
+                        .header("Authorization", "Bearer " + operator.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].taskType").value("FINALIZE"));
+
         mockMvc.perform(post("/api/v1/contracts/" + contractId + "/finalize")
-                        .header("Authorization", bearer())
+                        .header("Authorization", "Bearer " + operator.token())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"content\":\"最终合同正文\"}"))
                 .andExpect(status().isOk())
@@ -308,6 +314,13 @@ class BoundaryIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"result\":\"APPROVED\",\"opinion\":\"同意\"}"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contract.status").value("FINALIZED"));
+
+        mockMvc.perform(post("/api/v1/contracts/" + contractId + "/approve")
+                        .header("Authorization", "Bearer " + secondApprover.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"result\":\"APPROVED\",\"opinion\":\"同意\"}"))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.contract.status").value("APPROVED"));
 
         mockMvc.perform(post("/api/v1/contracts/" + contractId + "/sign")
@@ -315,14 +328,76 @@ class BoundaryIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"signInfo\":\"管理员签订\",\"signedDate\":\"2026-05-21\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.contract.status").value("APPROVED"));
-
-        mockMvc.perform(post("/api/v1/contracts/" + contractId + "/sign")
-                        .header("Authorization", "Bearer " + operator.token())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"signInfo\":\"操作员签订\",\"signedDate\":\"2026-05-21\"}"))
-                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.contract.status").value("SIGNED"));
+    }
+
+    @Test
+    void contractViewIsLimitedToRelatedContractsAndQueryCanSeeAll() throws Exception {
+        UserLogin drafter = createOperatorUser();
+        UserLogin unrelated = createOperatorUser();
+        Long customerId = createCustomer();
+        Long contractId = createContract(customerId, drafter.token());
+
+        MockMultipartFile pdf = new MockMultipartFile(
+                "file", "contract.pdf", "application/pdf", "%PDF-1.4\n".getBytes());
+        String uploadResponse = mockMvc.perform(multipart("/api/v1/contracts/" + contractId + "/attachments")
+                        .file(pdf)
+                        .header("Authorization", "Bearer " + drafter.token()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        Long attachmentId = objectMapper.readTree(uploadResponse).path("data").path("id").asLong();
+
+        String listResponse = mockMvc.perform(get("/api/v1/contracts")
+                        .header("Authorization", "Bearer " + unrelated.token())
+                        .param("page", "1")
+                        .param("size", "100"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        for (JsonNode record : objectMapper.readTree(listResponse).path("data").path("records")) {
+            if (record.path("id").asLong() == contractId) {
+                throw new AssertionError("无关用户不应在合同管理看到该合同");
+            }
+        }
+
+        mockMvc.perform(get("/api/v1/contracts/" + contractId)
+                        .header("Authorization", "Bearer " + unrelated.token()))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/contracts/" + contractId + "/attachments")
+                        .header("Authorization", "Bearer " + unrelated.token()))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/attachments/" + attachmentId + "/download")
+                        .header("Authorization", "Bearer " + unrelated.token()))
+                .andExpect(status().isForbidden());
+
+        String queryResponse = mockMvc.perform(get("/api/v1/contracts/query")
+                        .header("Authorization", bearer())
+                        .param("page", "1")
+                        .param("size", "100"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        boolean found = false;
+        for (JsonNode record : objectMapper.readTree(queryResponse).path("data").path("records")) {
+            found |= record.path("id").asLong() == contractId;
+        }
+        if (!found) {
+            throw new AssertionError("合同查询应能看到全量合同");
+        }
+    }
+
+    @Test
+    void assigningRolesRejectsMultipleRoles() throws Exception {
+        UserLogin operator = createOperatorUser();
+        Long operatorRoleId = findRoleId("ROLE_OPERATOR");
+        Long newUserRoleId = findRoleId("ROLE_NEW_USER");
+
+        mockMvc.perform(put("/api/v1/users/" + operator.id() + "/roles")
+                        .header("Authorization", bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(String.format("""
+                                {"roleIds":[%d,%d]}
+                                """, operatorRoleId, newUserRoleId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(40900));
     }
 
     private String login(String username, String password) throws Exception {
@@ -357,8 +432,12 @@ class BoundaryIntegrationTest {
     }
 
     private Long createContract(Long customerId) throws Exception {
+        return createContract(customerId, adminToken);
+    }
+
+    private Long createContract(Long customerId, String token) throws Exception {
         String response = mockMvc.perform(post("/api/v1/contracts")
-                        .header("Authorization", bearer())
+                        .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(contractPayload(customerId, LocalDate.now(), LocalDate.now().plusDays(1))))
                 .andExpect(status().isOk())

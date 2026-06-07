@@ -21,16 +21,16 @@ const hasPermission = (permission) => auth.permissions.includes(permission)
 const assignForm = reactive({
   countersignUserIds: [],
   approvalUserIds: [],
-  signUserIds: []
+  signUserId: ''
 })
 
 function statusLabel(s) {
-  const map = { DRAFT:'起草', ASSIGNED:'已分配', COUNTERSIGNED:'会签完成', FINALIZED:'已定稿', APPROVED:'已审批', SIGNED:'已签订', REJECTED:'已拒绝' }
+  const map = { DRAFT:'待分配', ASSIGNED:'待会签', COUNTERSIGNED:'待定稿', FINALIZED:'待审批', APPROVED:'待签订', SIGNED:'已签订', REJECTED:'已拒绝' }
   return map[s] || s
 }
 
 function taskLabel(t) {
-  const map = { COUNTERSIGN:'会签', APPROVAL:'审批', SIGN:'签订' }
+  const map = { ASSIGN:'分配', COUNTERSIGN:'会签', APPROVAL:'审批', FINALIZE:'定稿', SIGN:'签订' }
   return map[t] || t
 }
 
@@ -186,9 +186,21 @@ async function deleteAttachment(a) {
   }
 }
 
-const hasPendingTask = computed(() => tasks.value.some(t => t.taskStatus === 'PENDING' && t.assigneeId === auth.user?.id))
+const assignableUsers = computed(() => users.value.filter(u => u.id !== contract.value?.drafterId))
+const pendingTask = (type) => tasks.value.some(t => t.taskType === type && t.taskStatus === 'PENDING' && t.assigneeId === auth.user?.id)
+const canAssignCurrent = computed(() => hasPermission('contract:assign') && contract.value?.status === 'DRAFT' && pendingTask('ASSIGN'))
+const canCountersignCurrent = computed(() => hasPermission('contract:countersign') && contract.value?.status === 'ASSIGNED' && pendingTask('COUNTERSIGN'))
+const canFinalizeCurrent = computed(() => hasPermission('contract:update') && contract.value?.status === 'COUNTERSIGNED' && pendingTask('FINALIZE'))
+const canApproveCurrent = computed(() => hasPermission('contract:approve') && contract.value?.status === 'FINALIZED' && pendingTask('APPROVAL'))
+const canSignCurrent = computed(() => hasPermission('contract:sign') && contract.value?.status === 'APPROVED' && pendingTask('SIGN'))
+const canResubmitCurrent = computed(() => hasPermission('contract:update') && contract.value?.status === 'REJECTED' && contract.value?.drafterId === auth.user?.id)
 
-onMounted(() => { loadDetail(); loadUsers(); loadAttachments() })
+onMounted(() => {
+  if (route.query.tab) activeTab.value = route.query.tab
+  loadDetail()
+  loadUsers()
+  loadAttachments()
+})
 </script>
 
 <template>
@@ -212,7 +224,7 @@ onMounted(() => { loadDetail(); loadUsers(); loadAttachments() })
         <button :class="{ selected: activeTab === 'attachments' }" @click="activeTab = 'attachments'">
           附件 ({{ attachments.length }})
         </button>
-        <button v-if="hasPermission('contract:assign') && contract.status === 'DRAFT'" :class="{ selected: activeTab === 'assign' }" @click="activeTab = 'assign'">分配人员</button>
+        <button v-if="canAssignCurrent" :class="{ selected: activeTab === 'assign' }" @click="activeTab = 'assign'">分配人员</button>
       </div>
 
       <div v-if="activeTab === 'info'" class="tab-content">
@@ -233,17 +245,17 @@ onMounted(() => { loadDetail(); loadUsers(); loadAttachments() })
         </div>
 
         <div class="row-actions" style="margin-top:16px">
-          <button v-if="hasPermission('contract:assign') && contract.status === 'DRAFT'" @click="activeTab = 'assign'">
+          <button v-if="canAssignCurrent" @click="activeTab = 'assign'">
             <UserCheck :size="14" /> 分配人员
           </button>
-          <button v-if="hasPermission('contract:update') && contract.status === 'COUNTERSIGNED'" @click="doFinalize">定稿</button>
-          <button v-if="hasPermission('contract:update') && contract.status === 'REJECTED'" @click="doResubmit">
+          <button v-if="canFinalizeCurrent" @click="doFinalize">定稿</button>
+          <button v-if="canResubmitCurrent" @click="doResubmit">
             <RotateCcw :size="14" /> 重新提交审批
           </button>
-          <button v-if="hasPermission('contract:approve') && contract.status === 'FINALIZED'" @click="doApprove('APPROVED')">审批通过</button>
-          <button v-if="hasPermission('contract:approve') && contract.status === 'FINALIZED'" @click="doApprove('REJECTED')">审批拒绝</button>
-          <button v-if="hasPermission('contract:countersign') && contract.status === 'ASSIGNED' && hasPendingTask" @click="doCountersign">会签</button>
-          <button v-if="hasPermission('contract:sign') && contract.status === 'APPROVED'" @click="doSign">签订</button>
+          <button v-if="canApproveCurrent" @click="doApprove('APPROVED')">审批通过</button>
+          <button v-if="canApproveCurrent" @click="doApprove('REJECTED')">审批拒绝</button>
+          <button v-if="canCountersignCurrent" @click="doCountersign">会签</button>
+          <button v-if="canSignCurrent" @click="doSign">签订</button>
         </div>
       </div>
 
@@ -295,21 +307,22 @@ onMounted(() => { loadDetail(); loadUsers(); loadAttachments() })
         </table>
       </div>
 
-      <div v-if="activeTab === 'assign' && hasPermission('contract:assign')" class="tab-content">
+      <div v-if="activeTab === 'assign' && canAssignCurrent" class="tab-content">
         <div class="form-grid single">
           <label>会签人员
             <select v-model="assignForm.countersignUserIds" multiple style="min-height:100px">
-              <option v-for="u in users" :key="u.id" :value="u.id">{{ u.displayName || u.username }}</option>
+              <option v-for="u in assignableUsers" :key="u.id" :value="u.id">{{ u.displayName || u.username }}</option>
             </select>
           </label>
           <label>审批人员
             <select v-model="assignForm.approvalUserIds" multiple style="min-height:100px">
-              <option v-for="u in users" :key="u.id" :value="u.id">{{ u.displayName || u.username }}</option>
+              <option v-for="u in assignableUsers" :key="u.id" :value="u.id">{{ u.displayName || u.username }}</option>
             </select>
           </label>
           <label>签订人员
-            <select v-model="assignForm.signUserIds" multiple style="min-height:100px">
-              <option v-for="u in users" :key="u.id" :value="u.id">{{ u.displayName || u.username }}</option>
+            <select v-model="assignForm.signUserId">
+              <option value="" disabled>请选择签订人员</option>
+              <option v-for="u in assignableUsers" :key="u.id" :value="u.id">{{ u.displayName || u.username }}</option>
             </select>
           </label>
         </div>

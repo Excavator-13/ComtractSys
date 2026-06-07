@@ -8,6 +8,7 @@ const router = useRouter()
 const customers = ref([])
 const error = ref('')
 const loading = ref(false)
+const files = ref([])
 
 const form = reactive({
   name: '',
@@ -37,13 +38,29 @@ async function submit() {
   loading.value = true
   error.value = ''
   try {
-    const res = await api.post('/contracts', { ...form, customerId: Number(form.customerId) })
+    let res
+    if (files.value.length) {
+      const formData = new FormData()
+      formData.append('name', form.name)
+      formData.append('customerId', Number(form.customerId))
+      formData.append('beginDate', form.beginDate)
+      formData.append('endDate', form.endDate)
+      formData.append('content', form.content)
+      files.value.forEach(file => formData.append('files', file))
+      res = await api.post('/contracts', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+    } else {
+      res = await api.post('/contracts', { ...form, customerId: Number(form.customerId) })
+    }
     router.push(`/contracts/${res.data.id}`)
   } catch (err) {
     error.value = err.message
   } finally {
     loading.value = false
   }
+}
+
+function handleFiles(e) {
+  files.value = Array.from(e.target.files || [])
 }
 
 onMounted(loadCustomers)
@@ -68,6 +85,10 @@ onMounted(loadCustomers)
         <label>开始日期<input v-model="form.beginDate" type="date" required /></label>
         <label>结束日期<input v-model="form.endDate" type="date" required /></label>
         <label class="full">合同内容<textarea v-model="form.content" rows="8" placeholder="输入合同正文内容" required /></label>
+        <label class="full">附件
+          <input type="file" multiple accept=".doc,.docx,.jpg,.jpeg,.png,.bmp,.gif,.pdf" @change="handleFiles" />
+          <span class="muted">支持 doc/docx/jpg/png/pdf，最大 10MB</span>
+        </label>
       </div>
       <button class="primary" :disabled="loading" @click="submit">{{ loading ? '提交中...' : '提交起草' }}</button>
     </div>

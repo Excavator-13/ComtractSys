@@ -5,16 +5,20 @@ import com.contractsys.common.PageRequests;
 import com.contractsys.contract.dto.*;
 import com.contractsys.customer.Customer;
 import com.contractsys.customer.CustomerRepository;
+import com.contractsys.log.OperationLogService;
 import com.contractsys.user.SysUser;
 import com.contractsys.user.UserRepository;
+import com.contractsys.user.UserStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 public class ContractService {
@@ -23,36 +27,54 @@ public class ContractService {
     private final ContractStateHistoryRepository stateHistoryRepository;
     private final CustomerRepository customerRepository;
     private final UserRepository userRepository;
+    private final OperationLogService operationLogService;
 
     public ContractService(ContractRepository contractRepository, ContractTaskRepository taskRepository,
                            ContractStateHistoryRepository stateHistoryRepository, CustomerRepository customerRepository,
-                           UserRepository userRepository) {
+                           UserRepository userRepository, OperationLogService operationLogService) {
         this.contractRepository = contractRepository;
         this.taskRepository = taskRepository;
         this.stateHistoryRepository = stateHistoryRepository;
         this.customerRepository = customerRepository;
         this.userRepository = userRepository;
+        this.operationLogService = operationLogService;
     }
 
-    public Page<ContractView> list(String keyword, String statusStr, int page, int size) {
-        ContractStatus status = null;
-        if (statusStr != null && !statusStr.isEmpty()) {
-            try {
-                status = ContractStatus.valueOf(statusStr);
-            } catch (IllegalArgumentException ex) {
-                throw ApiException.badRequest("合同状态不合法: " + statusStr);
-            }
-        }
+    public Page<ContractView> list(String keyword, String statusStr, int page, int size, SysUser user) {
+        ContractStatus status = parseStatus(statusStr);
+        return contractRepository.searchRelated(
+                keyword == null ? "" : keyword,
+                status,
+                user.getId(),
+                hasPermission(user, "contract:assign"),
+                ContractStatus.DRAFT,
+                PageRequests.of(page, size)
+        ).map(ContractView::from);
+    }
+
+    public Page<ContractView> query(String keyword, String statusStr, int page, int size) {
+        ContractStatus status = parseStatus(statusStr);
         return contractRepository.search(
                 keyword == null ? "" : keyword, status,
                 PageRequests.of(page, size)
         ).map(ContractView::from);
     }
 
-    public ContractDetailView detail(Long id) {
+    public ContractDetailView detail(Long id, SysUser user) {
         Contract contract = getContract(id);
+        ensureCanViewContract(contract, user);
         List<TaskView> tasks = taskRepository.findByContractIdOrderByCreatedAtAsc(id).stream().map(TaskView::from).toList();
         return new ContractDetailView(ContractView.from(contract), tasks);
+    }
+
+    public Map<String, Object> process(Long id, SysUser user) {
+        Contract contract = getContract(id);
+        ensureCanViewContract(contract, user);
+        return Map.of(
+                "contract", ContractView.from(contract),
+                "tasks", taskRepository.findByContractIdOrderByCreatedAtAsc(id).stream().map(TaskView::from).toList(),
+                "histories", stateHistoryRepository.findByContractIdOrderByCreatedAtAsc(id)
+        );
     }
 
     @Transactional
@@ -73,6 +95,7 @@ public class ContractService {
         contract.setDrafter(operator);
         Contract saved = contractRepository.save(contract);
         recordState(saved, null, ContractStatus.DRAFT, operator, "起草合同");
+        createAssignTasks(saved);
         return ContractView.from(saved);
     }
 
@@ -80,11 +103,18 @@ public class ContractService {
     public ContractDetailView assign(Long id, AssignRequest request, SysUser operator) {
         Contract contract = getContract(id);
         requireStatus(contract, ContractStatus.DRAFT);
-        request.countersignUserIds().forEach(userId -> createTask(contract, userId, TaskType.COUNTERSIGN));
-        request.approvalUserIds().forEach(userId -> createTask(contract, userId, TaskType.APPROVAL));
-        request.signUserIds().forEach(userId -> createTask(contract, userId, TaskType.SIGN));
+        finishTask(id, operator, TaskType.ASSIGN, TaskStatus.DONE, "已完成分配");
+        completeRemainingPendingTasks(id, TaskType.ASSIGN, "其他分配待办已关闭");
+        validateAssignees(contract, request.countersignUserIds(), "会签人员");
+        validateAssignees(contract, request.approvalUserIds(), "审批人员");
+        if (request.signUserId().equals(contract.getDrafter().getId())) {
+            throw ApiException.conflict("签订人员不能是起草人");
+        }
+        createUniqueTasks(contract, request.countersignUserIds(), TaskType.COUNTERSIGN, "contract:countersign");
+        createUniqueTasks(contract, request.approvalUserIds(), TaskType.APPROVAL, "contract:approve");
+        createTask(contract, request.signUserId(), TaskType.SIGN, "contract:sign");
         changeStatus(contract, ContractStatus.ASSIGNED, operator, "管理员分配合同流程人员");
-        return detail(id);
+        return detail(id, operator);
     }
 
     public List<TaskView> myTasks(SysUser user) {
@@ -98,8 +128,9 @@ public class ContractService {
         finishTask(id, operator, TaskType.COUNTERSIGN, TaskStatus.DONE, request.opinion());
         if (!taskRepository.existsByContractIdAndTaskTypeAndTaskStatus(id, TaskType.COUNTERSIGN, TaskStatus.PENDING)) {
             changeStatus(contract, ContractStatus.COUNTERSIGNED, operator, "全部会签完成");
+            createTask(contract, contract.getDrafter().getId(), TaskType.FINALIZE, "contract:update");
         }
-        return detail(id);
+        return detail(id, operator);
     }
 
     @Transactional
@@ -109,9 +140,10 @@ public class ContractService {
         if (!contract.getDrafter().getId().equals(operator.getId())) {
             throw ApiException.forbidden("只有起草人可以定稿");
         }
+        finishTask(id, operator, TaskType.FINALIZE, TaskStatus.DONE, "起草人定稿");
         contract.setContent(request.content());
         changeStatus(contract, ContractStatus.FINALIZED, operator, "起草人定稿");
-        return detail(id);
+        return detail(id, operator);
     }
 
     @Transactional
@@ -125,7 +157,7 @@ public class ContractService {
         } else if (!taskRepository.existsByContractIdAndTaskTypeAndTaskStatus(id, TaskType.APPROVAL, TaskStatus.PENDING)) {
             changeStatus(contract, ContractStatus.APPROVED, operator, "全部审批通过");
         }
-        return detail(id);
+        return detail(id, operator);
     }
 
     @Transactional
@@ -138,7 +170,7 @@ public class ContractService {
         if (!taskRepository.existsByContractIdAndTaskTypeAndTaskStatus(id, TaskType.SIGN, TaskStatus.PENDING)) {
             changeStatus(contract, ContractStatus.SIGNED, operator, "合同签订完成");
         }
-        return detail(id);
+        return detail(id, operator);
     }
 
     @Transactional
@@ -197,7 +229,7 @@ public class ContractService {
         }
         taskRepository.saveAll(approvalTasks);
         changeStatus(contract, ContractStatus.FINALIZED, operator, "重新提交审批");
-        return detail(id);
+        return detail(id, operator);
     }
 
     public byte[] exportLogs(String keyword) throws Exception {
@@ -247,13 +279,113 @@ public class ContractService {
         );
     }
 
+    public Map<String, Object> getStatistics(SysUser user) {
+        if (hasPermission(user, "contract:query")) {
+            return getStatistics();
+        }
+        List<ContractView> related = list("", "", 1, 10000, user).getContent();
+        return Map.of(
+                "total", (long) related.size(),
+                "draft", related.stream().filter(c -> c.status() == ContractStatus.DRAFT).count(),
+                "assigned", related.stream().filter(c -> c.status() == ContractStatus.ASSIGNED).count(),
+                "signed", related.stream().filter(c -> c.status() == ContractStatus.SIGNED).count(),
+                "rejected", related.stream().filter(c -> c.status() == ContractStatus.REJECTED).count(),
+                "pendingTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.PENDING)
+        );
+    }
+
+    public Map<String, Object> getMyTaskStatistics(SysUser user) {
+        return Map.of(
+                "pendingTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.PENDING),
+                "doneTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.DONE),
+                "rejectedTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.REJECTED)
+        );
+    }
+
+    public List<Map<String, Object>> getMonthlyStatistics() {
+        return contractRepository.findAll().stream()
+                .filter(contract -> !contract.isDeleted())
+                .collect(java.util.stream.Collectors.groupingBy(
+                        contract -> contract.getCreatedAt().getYear() + "-" + String.format("%02d", contract.getCreatedAt().getMonthValue()),
+                        java.util.stream.Collectors.counting()
+                ))
+                .entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> Map.<String, Object>of("month", entry.getKey(), "count", entry.getValue()))
+                .toList();
+    }
+
     public Contract getContract(Long id) {
         return contractRepository.findById(id).filter(c -> !c.isDeleted())
                 .orElseThrow(() -> ApiException.notFound("合同不存在"));
     }
 
-    private void createTask(Contract contract, Long userId, TaskType taskType) {
-        SysUser assignee = userRepository.findById(userId).orElseThrow(() -> ApiException.notFound("用户不存在: " + userId));
+    public void ensureCanViewContract(Long contractId, SysUser user) {
+        ensureCanViewContract(getContract(contractId), user);
+    }
+
+    public boolean canViewContract(Contract contract, SysUser user) {
+        return hasPermission(user, "contract:query")
+                || contract.getDrafter().getId().equals(user.getId())
+                || taskRepository.existsByContractIdAndAssigneeId(contract.getId(), user.getId())
+                || (contract.getStatus() == ContractStatus.DRAFT && hasPermission(user, "contract:assign"));
+    }
+
+    public boolean hasPermission(SysUser user, String permissionCode) {
+        return user.getRoles().stream()
+                .flatMap(role -> role.getPermissions().stream())
+                .anyMatch(permission -> permissionCode.equals(permission.getPermissionCode()));
+    }
+
+    private ContractStatus parseStatus(String statusStr) {
+        if (statusStr == null || statusStr.isEmpty()) {
+            return null;
+        }
+        try {
+            return ContractStatus.valueOf(statusStr);
+        } catch (IllegalArgumentException ex) {
+            throw ApiException.badRequest("合同状态不合法: " + statusStr);
+        }
+    }
+
+    private void ensureCanViewContract(Contract contract, SysUser user) {
+        if (!canViewContract(contract, user)) {
+            throw ApiException.forbidden("当前用户无权查看该合同");
+        }
+    }
+
+    private void createAssignTasks(Contract contract) {
+        userRepository.findEnabledUsersWithPermission("contract:assign").stream()
+                .forEach(user -> createTask(contract, user.getId(), TaskType.ASSIGN, "contract:assign"));
+    }
+
+    private void validateAssignees(Contract contract, List<Long> userIds, String label) {
+        if (new LinkedHashSet<>(userIds).size() != userIds.size()) {
+            throw ApiException.conflict(label + "不能重复");
+        }
+        if (userIds.contains(contract.getDrafter().getId())) {
+            throw ApiException.conflict(label + "不能包含起草人");
+        }
+    }
+
+    private void createUniqueTasks(Contract contract, List<Long> userIds, TaskType taskType, String requiredPermission) {
+        Set<Long> ids = new LinkedHashSet<>(userIds);
+        ids.forEach(userId -> createTask(contract, userId, taskType, requiredPermission));
+    }
+
+    private void createTask(Contract contract, Long userId, TaskType taskType, String requiredPermission) {
+        SysUser assignee = userRepository.findById(userId)
+                .filter(user -> !user.isDeleted())
+                .orElseThrow(() -> ApiException.notFound("用户不存在: " + userId));
+        if (assignee.getStatus() != UserStatus.ENABLED) {
+            throw ApiException.conflict("用户已禁用，不能分配流程任务: " + assignee.getUsername());
+        }
+        boolean hasPermission = assignee.getRoles().stream()
+                .flatMap(role -> role.getPermissions().stream())
+                .anyMatch(permission -> requiredPermission.equals(permission.getPermissionCode()));
+        if (!hasPermission) {
+            throw ApiException.conflict("用户缺少流程权限 " + requiredPermission + ": " + assignee.getUsername());
+        }
         ContractTask task = new ContractTask();
         task.setContract(contract);
         task.setAssignee(assignee);
@@ -267,6 +399,16 @@ public class ContractService {
         task.setTaskStatus(status);
         task.setOpinion(opinion);
         task.setOperatedAt(LocalDateTime.now());
+    }
+
+    private void completeRemainingPendingTasks(Long contractId, TaskType taskType, String opinion) {
+        List<ContractTask> tasks = taskRepository.findByContractIdAndTaskTypeAndTaskStatus(contractId, taskType, TaskStatus.PENDING);
+        for (ContractTask task : tasks) {
+            task.setTaskStatus(TaskStatus.DONE);
+            task.setOpinion(opinion);
+            task.setOperatedAt(LocalDateTime.now());
+        }
+        taskRepository.saveAll(tasks);
     }
 
     private void requireStatus(Contract contract, ContractStatus... statuses) {
@@ -292,5 +434,7 @@ public class ContractService {
         history.setOperator(operator);
         history.setRemark(remark);
         stateHistoryRepository.save(history);
+        operationLogService.record(operator, "CONTRACT", remark, "CONTRACT", contract.getId(),
+                contract.getContractNo() + " " + contract.getName() + " " + (from == null ? "-" : from) + " -> " + to);
     }
 }

@@ -5,6 +5,8 @@ import com.contractsys.auth.RequirePermission;
 import com.contractsys.common.ApiResponse;
 import com.contractsys.common.PageResponse;
 import com.contractsys.contract.dto.*;
+import com.contractsys.log.OperationLog;
+import com.contractsys.log.OperationLogService;
 import com.contractsys.user.SysUser;
 import jakarta.validation.Valid;
 import org.springframework.core.io.FileSystemResource;
@@ -20,6 +22,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -30,13 +33,16 @@ public class ContractController {
     private final AuthService authService;
     private final FileStorageService fileStorageService;
     private final AttachmentRepository attachmentRepository;
+    private final OperationLogService operationLogService;
 
     public ContractController(ContractService contractService, AuthService authService,
-                              FileStorageService fileStorageService, AttachmentRepository attachmentRepository) {
+                              FileStorageService fileStorageService, AttachmentRepository attachmentRepository,
+                              OperationLogService operationLogService) {
         this.contractService = contractService;
         this.authService = authService;
         this.fileStorageService = fileStorageService;
         this.attachmentRepository = attachmentRepository;
+        this.operationLogService = operationLogService;
     }
 
     @GetMapping("/contracts")
@@ -45,22 +51,50 @@ public class ContractController {
                                                         @RequestParam(defaultValue = "") String status,
                                                         @RequestParam(defaultValue = "1") int page,
                                                         @RequestParam(defaultValue = "10") int size) {
+        SysUser user = authService.requireUser();
+        return ApiResponse.ok(PageResponse.from(contractService.list(keyword, status, page, size, user)));
+    }
+
+    @GetMapping("/contracts/query")
+    @RequirePermission("contract:query")
+    public ApiResponse<PageResponse<ContractView>> query(@RequestParam(defaultValue = "") String keyword,
+                                                         @RequestParam(defaultValue = "") String status,
+                                                         @RequestParam(defaultValue = "1") int page,
+                                                         @RequestParam(defaultValue = "10") int size) {
         authService.requireUser();
-        return ApiResponse.ok(PageResponse.from(contractService.list(keyword, status, page, size)));
+        return ApiResponse.ok(PageResponse.from(contractService.query(keyword, status, page, size)));
     }
 
     @GetMapping("/contracts/{id}")
-    @RequirePermission("contract:view")
+    @RequirePermission({"contract:view", "contract:query"})
     public ApiResponse<ContractDetailView> detail(@PathVariable Long id) {
-        authService.requireUser();
-        return ApiResponse.ok(contractService.detail(id));
+        SysUser user = authService.requireUser();
+        return ApiResponse.ok(contractService.detail(id, user));
     }
 
-    @PostMapping("/contracts")
+    @PostMapping(value = "/contracts", consumes = MediaType.APPLICATION_JSON_VALUE)
     @RequirePermission("contract:create")
     public ApiResponse<ContractView> create(@Valid @RequestBody ContractCreateRequest request) {
         SysUser user = authService.requireUser();
         return ApiResponse.ok("起草成功", contractService.create(request, user));
+    }
+
+    @PostMapping(value = "/contracts", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @RequirePermission("contract:create")
+    public ApiResponse<ContractView> createMultipart(@RequestParam String name,
+                                                     @RequestParam Long customerId,
+                                                     @RequestParam LocalDate beginDate,
+                                                     @RequestParam LocalDate endDate,
+                                                     @RequestParam String content,
+                                                     @RequestParam(value = "files", required = false) List<MultipartFile> files) {
+        SysUser user = authService.requireUser();
+        ContractView created = contractService.create(new ContractCreateRequest(name, customerId, beginDate, endDate, content), user);
+        if (files != null) {
+            Contract contract = contractService.getContract(created.id());
+            files.stream().filter(file -> file != null && !file.isEmpty())
+                    .forEach(file -> saveAttachment(contract, file, user));
+        }
+        return ApiResponse.ok("起草成功", created);
     }
 
     @PostMapping("/contracts/{id}/assign")
@@ -72,10 +106,17 @@ public class ContractController {
     }
 
     @GetMapping("/tasks/my")
-    @RequirePermission({"contract:countersign", "contract:approve", "contract:sign", "contract:update"})
+    @RequirePermission({"contract:assign", "contract:countersign", "contract:approve", "contract:sign", "contract:update"})
     public ApiResponse<List<TaskView>> myTasks() {
         SysUser user = authService.requireUser();
         return ApiResponse.ok(contractService.myTasks(user));
+    }
+
+    @GetMapping("/contracts/{id}/process")
+    @RequirePermission({"contract:view", "contract:query"})
+    public ApiResponse<Map<String, Object>> process(@PathVariable Long id) {
+        SysUser user = authService.requireUser();
+        return ApiResponse.ok(contractService.process(id, user));
     }
 
     @PostMapping("/contracts/{id}/countersign")
@@ -128,18 +169,20 @@ public class ContractController {
 
     @GetMapping("/logs")
     @RequirePermission("log:view")
-    public ApiResponse<PageResponse<ContractStateHistory>> logs(@RequestParam(defaultValue = "") String keyword,
-                                                                  @RequestParam(defaultValue = "1") int page,
-                                                                  @RequestParam(defaultValue = "10") int size) {
+    public ApiResponse<PageResponse<OperationLog>> logs(@RequestParam(defaultValue = "") String keyword,
+                                                        @RequestParam(defaultValue = "") String module,
+                                                        @RequestParam(defaultValue = "1") int page,
+                                                        @RequestParam(defaultValue = "10") int size) {
         authService.requireUser();
-        return ApiResponse.ok(PageResponse.from(contractService.logs(keyword, page, size)));
+        return ApiResponse.ok(PageResponse.from(operationLogService.list(keyword, module, page, size)));
     }
 
     @GetMapping("/logs/export")
     @RequirePermission("log:view")
-    public ResponseEntity<Resource> exportLogs(@RequestParam(defaultValue = "") String keyword) throws Exception {
+    public ResponseEntity<Resource> exportLogs(@RequestParam(defaultValue = "") String keyword,
+                                               @RequestParam(defaultValue = "") String module) {
         authService.requireUser();
-        byte[] csv = contractService.exportLogs(keyword);
+        byte[] csv = operationLogService.export(keyword, module);
         Resource resource = new org.springframework.core.io.ByteArrayResource(csv);
         String filename = "logs_" + java.time.LocalDate.now() + ".csv";
         return ResponseEntity.ok()
@@ -155,22 +198,16 @@ public class ContractController {
                                                               @RequestParam("file") MultipartFile file) {
         SysUser user = authService.requireUser();
         Contract contract = contractService.getContract(id);
-        FileStorageService.StoredFile stored = fileStorageService.store(file);
-        Attachment attachment = new Attachment();
-        attachment.setContract(contract);
-        attachment.setOriginalName(stored.originalName());
-        attachment.setStoredName(stored.storedName());
-        attachment.setContentType(stored.contentType());
-        attachment.setFileSize(stored.fileSize());
-        attachment.setUploader(user);
-        attachmentRepository.save(attachment);
+        contractService.ensureCanViewContract(contract.getId(), user);
+        Attachment attachment = saveAttachment(contract, file, user);
         return ApiResponse.ok("上传成功", Map.of("id", attachment.getId(), "originalName", attachment.getOriginalName()));
     }
 
     @GetMapping("/contracts/{id}/attachments")
-    @RequirePermission("contract:view")
+    @RequirePermission({"contract:view", "contract:query"})
     public ApiResponse<List<Map<String, Object>>> listAttachments(@PathVariable Long id) {
-        authService.requireUser();
+        SysUser user = authService.requireUser();
+        contractService.ensureCanViewContract(id, user);
         List<Map<String, Object>> list = attachmentRepository.findByContractIdOrderByUploadedAtDesc(id).stream()
                 .map(a -> Map.<String, Object>of(
                         "id", a.getId(),
@@ -183,11 +220,12 @@ public class ContractController {
     }
 
     @GetMapping("/attachments/{id}/download")
-    @RequirePermission("contract:view")
+    @RequirePermission({"contract:view", "contract:query"})
     public ResponseEntity<Resource> downloadAttachment(@PathVariable Long id) {
-        authService.requireUser();
+        SysUser user = authService.requireUser();
         Attachment attachment = attachmentRepository.findById(id)
                 .orElseThrow(() -> com.contractsys.common.ApiException.notFound("附件不存在"));
+        contractService.ensureCanViewContract(attachment.getContract().getId(), user);
         Path filePath = fileStorageService.resolve(attachment.getStoredName());
         if (!Files.exists(filePath)) {
             throw com.contractsys.common.ApiException.notFound("附件文件不存在");
@@ -203,13 +241,16 @@ public class ContractController {
     @DeleteMapping("/attachments/{id}")
     @RequirePermission("contract:update")
     public ApiResponse<Void> deleteAttachment(@PathVariable Long id) {
-        authService.requireUser();
+        SysUser user = authService.requireUser();
         Attachment attachment = attachmentRepository.findById(id)
                 .orElseThrow(() -> com.contractsys.common.ApiException.notFound("附件不存在"));
+        contractService.ensureCanViewContract(attachment.getContract().getId(), user);
         try {
             Files.deleteIfExists(fileStorageService.resolve(attachment.getStoredName()));
         } catch (IOException ignored) {}
         attachmentRepository.delete(attachment);
+        operationLogService.record(user, "CONTRACT", "删除附件", "ATTACHMENT", attachment.getId(),
+                attachment.getOriginalName());
         return ApiResponse.ok(null);
     }
 
@@ -221,9 +262,45 @@ public class ContractController {
     }
 
     @GetMapping("/statistics")
-    @RequirePermission("contract:view")
+    @RequirePermission({"contract:view", "contract:query"})
     public ApiResponse<Map<String, Object>> statistics() {
+        SysUser user = authService.requireUser();
+        return ApiResponse.ok(contractService.getStatistics(user));
+    }
+
+    @GetMapping("/statistics/contracts/status")
+    @RequirePermission({"contract:view", "contract:query"})
+    public ApiResponse<Map<String, Object>> contractStatusStatistics() {
+        SysUser user = authService.requireUser();
+        return ApiResponse.ok(contractService.getStatistics(user));
+    }
+
+    @GetMapping("/statistics/tasks/my")
+    @RequirePermission({"contract:assign", "contract:countersign", "contract:approve", "contract:sign", "contract:update"})
+    public ApiResponse<Map<String, Object>> myTaskStatistics() {
+        SysUser user = authService.requireUser();
+        return ApiResponse.ok(contractService.getMyTaskStatistics(user));
+    }
+
+    @GetMapping("/statistics/contracts/monthly")
+    @RequirePermission("contract:query")
+    public ApiResponse<List<Map<String, Object>>> monthlyContractStatistics() {
         authService.requireUser();
-        return ApiResponse.ok(contractService.getStatistics());
+        return ApiResponse.ok(contractService.getMonthlyStatistics());
+    }
+
+    private Attachment saveAttachment(Contract contract, MultipartFile file, SysUser user) {
+        FileStorageService.StoredFile stored = fileStorageService.store(file);
+        Attachment attachment = new Attachment();
+        attachment.setContract(contract);
+        attachment.setOriginalName(stored.originalName());
+        attachment.setStoredName(stored.storedName());
+        attachment.setContentType(stored.contentType());
+        attachment.setFileSize(stored.fileSize());
+        attachment.setUploader(user);
+        attachmentRepository.save(attachment);
+        operationLogService.record(user, "CONTRACT", "上传附件", "ATTACHMENT", attachment.getId(),
+                contract.getContractNo() + " " + attachment.getOriginalName());
+        return attachment;
     }
 }

@@ -1,7 +1,7 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { RefreshCcw, CheckCircle, XCircle, FileEdit, PenLine } from 'lucide-vue-next'
+import { RefreshCcw, CheckCircle, XCircle, FileEdit, PenLine, UserCheck } from 'lucide-vue-next'
 import { api } from '../api'
 
 const router = useRouter()
@@ -9,9 +9,25 @@ const tasks = ref([])
 const error = ref('')
 
 function taskLabel(t) {
-  const map = { COUNTERSIGN:'会签', APPROVAL:'审批', SIGN:'签订' }
+  const map = { ASSIGN:'分配', COUNTERSIGN:'会签', APPROVAL:'审批', FINALIZE:'定稿', SIGN:'签订' }
   return map[t] || t
 }
+
+const taskOrder = { ASSIGN: 1, COUNTERSIGN: 2, FINALIZE: 3, APPROVAL: 4, SIGN: 5 }
+const groupedTasks = computed(() => {
+  const groups = new Map()
+  tasks.value.forEach(task => {
+    if (!groups.has(task.contractId)) {
+      groups.set(task.contractId, { contractId: task.contractId, contractName: task.contractName, tasks: [] })
+    }
+    groups.get(task.contractId).tasks.push(task)
+  })
+  return Array.from(groups.values()).map(group => {
+    group.tasks.sort((a, b) => (taskOrder[a.taskType] || 99) - (taskOrder[b.taskType] || 99))
+    group.current = group.tasks[0]
+    return group
+  })
+})
 
 async function loadTasks() {
   error.value = ''
@@ -56,6 +72,25 @@ async function handleSign(task) {
   }
 }
 
+function handleAssign(task) {
+  router.push({ path: `/contracts/${task.contractId}`, query: { tab: 'assign' } })
+}
+
+async function handleFinalize(task) {
+  const content = prompt('定稿内容:')
+  if (!content) return
+  try {
+    await api.post(`/contracts/${task.contractId}/finalize`, { content })
+    loadTasks()
+  } catch (err) {
+    error.value = err.message
+  }
+}
+
+function openContract(task) {
+  router.push(`/contracts/${task.contractId}`)
+}
+
 onMounted(loadTasks)
 </script>
 
@@ -72,34 +107,36 @@ onMounted(loadTasks)
       <p class="muted" style="text-align:center;padding:32px">暂无待办任务</p>
     </div>
 
-    <div v-else class="panel">
-      <table>
-        <thead><tr><th>合同</th><th>任务类型</th><th>操作</th></tr></thead>
-        <tbody>
-          <tr v-for="t in tasks" :key="t.id">
-            <td>
-              <a @click="router.push(`/contracts/${t.contractId}`)" style="cursor:pointer;color:#126f67;font-weight:700">
-                {{ t.contractName }}
-              </a>
-            </td>
-            <td>{{ taskLabel(t.taskType) }}</td>
-            <td class="row-actions">
-              <button v-if="t.taskType === 'COUNTERSIGN'" @click="handleCountersign(t)">
-                <FileEdit :size="14" /> 会签
-              </button>
-              <button v-if="t.taskType === 'APPROVAL'" @click="handleApprove(t, 'APPROVED')">
-                <CheckCircle :size="14" /> 通过
-              </button>
-              <button v-if="t.taskType === 'APPROVAL'" @click="handleApprove(t, 'REJECTED')">
-                <XCircle :size="14" /> 拒绝
-              </button>
-              <button v-if="t.taskType === 'SIGN'" @click="handleSign(t)">
-                <PenLine :size="14" /> 签订
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <div v-else class="task-groups">
+      <section v-for="group in groupedTasks" :key="group.contractId" class="panel task-card">
+        <div>
+          <button class="link-button" @click="openContract(group.current)">{{ group.contractName }}</button>
+          <div class="muted" style="margin-top:6px">当前步骤：<strong>{{ taskLabel(group.current.taskType) }}</strong></div>
+          <div v-if="group.tasks.length > 1" class="task-tags">
+            <span v-for="t in group.tasks.slice(1)" :key="t.id" class="status">{{ taskLabel(t.taskType) }}</span>
+          </div>
+        </div>
+        <div class="row-actions">
+          <button v-if="group.current.taskType === 'ASSIGN'" @click="handleAssign(group.current)">
+            <UserCheck :size="14" /> 分配
+          </button>
+          <button v-if="group.current.taskType === 'COUNTERSIGN'" @click="handleCountersign(group.current)">
+            <FileEdit :size="14" /> 会签
+          </button>
+          <button v-if="group.current.taskType === 'FINALIZE'" @click="handleFinalize(group.current)">
+            <FileEdit :size="14" /> 定稿
+          </button>
+          <button v-if="group.current.taskType === 'APPROVAL'" @click="handleApprove(group.current, 'APPROVED')">
+            <CheckCircle :size="14" /> 通过
+          </button>
+          <button v-if="group.current.taskType === 'APPROVAL'" @click="handleApprove(group.current, 'REJECTED')">
+            <XCircle :size="14" /> 拒绝
+          </button>
+          <button v-if="group.current.taskType === 'SIGN'" @click="handleSign(group.current)">
+            <PenLine :size="14" /> 签订
+          </button>
+        </div>
+      </section>
     </div>
   </div>
 </template>

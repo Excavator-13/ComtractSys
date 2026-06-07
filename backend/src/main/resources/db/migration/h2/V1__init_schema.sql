@@ -122,7 +122,23 @@ CREATE TABLE attachment (
   CONSTRAINT fk_attachment_uploader FOREIGN KEY (uploader_id) REFERENCES sys_user (id)
 );
 
+CREATE TABLE operation_log (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  operator_id BIGINT,
+  operator_name VARCHAR(40),
+  module VARCHAR(40) NOT NULL,
+  action VARCHAR(40) NOT NULL,
+  target_type VARCHAR(40),
+  target_id BIGINT,
+  content CLOB NOT NULL,
+  ip VARCHAR(64),
+  created_at TIMESTAMP NOT NULL,
+  CONSTRAINT fk_operation_log_operator FOREIGN KEY (operator_id) REFERENCES sys_user (id)
+);
+
 CREATE INDEX idx_customer_name_deleted ON customer (name, deleted);
 CREATE INDEX idx_contract_status_deleted ON contract (status, deleted);
 CREATE INDEX idx_contract_task_assignee_status ON contract_task (assignee_id, task_status);
 CREATE INDEX idx_contract_history_created_at ON contract_state_history (created_at);
+CREATE INDEX idx_operation_log_created_at ON operation_log (created_at);
+CREATE INDEX idx_operation_log_module ON operation_log (module);

@@ -10,7 +10,13 @@ public record UserCreateRequest(
         String displayName,
         String phone,
         String email,
-        List<Long> roleIds
+        List<Long> roleIds,
+        Long roleId
 ) {
+    public List<Long> effectiveRoleIds() {
+        if (roleId != null) {
+            return List.of(roleId);
+        }
+        return roleIds;
+    }
 }
-

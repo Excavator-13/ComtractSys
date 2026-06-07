@@ -33,7 +33,7 @@ public class DataInitializer implements CommandLineRunner {
         List<SysPermission> permissions = seedPermissions();
         SysRole admin = seedRole("ROLE_ADMIN", "系统管理员", "拥有全部系统权限", permissions);
         seedRole("ROLE_CONTRACT_ADMIN", "合同管理员", "负责合同分配和流程跟踪", permissions.stream()
-                .filter(p -> List.of("contract:view", "contract:assign", "contract:delete", "log:view").contains(p.getPermissionCode()))
+                .filter(p -> List.of("contract:view", "contract:query", "contract:assign", "contract:delete", "log:view").contains(p.getPermissionCode()))
                 .toList());
         seedRole("ROLE_OPERATOR", "合同操作员", "负责合同业务操作", permissions.stream()
                 .filter(p -> List.of(
@@ -59,6 +59,7 @@ public class DataInitializer implements CommandLineRunner {
                 permission("contract:update", "修改合同", "CONTRACT"),
                 permission("contract:delete", "删除合同", "CONTRACT"),
                 permission("contract:view", "查看合同", "CONTRACT"),
+                permission("contract:query", "合同查询", "CONTRACT"),
                 permission("contract:assign", "分配合同", "CONTRACT"),
                 permission("contract:countersign", "会签合同", "CONTRACT"),
                 permission("contract:approve", "审批合同", "CONTRACT"),

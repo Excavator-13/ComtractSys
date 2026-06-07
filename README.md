@@ -31,6 +31,8 @@ http://localhost:8080
 $env:JWT_SECRET="replace-with-at-least-32-bytes-secret"
 $env:ADMIN_DEFAULT_PASSWORD="change-this-admin-password"
 $env:CORS_ALLOWED_ORIGINS="http://localhost:5173"
+$env:SPRINGDOC_API_DOCS_ENABLED="true"
+$env:SPRINGDOC_SWAGGER_UI_ENABLED="true"
 ```
 
 默认账号：

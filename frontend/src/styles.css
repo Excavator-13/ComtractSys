@@ -181,6 +181,20 @@ textarea {
   color: #fff;
 }
 
+.nav-badge {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .workspace {
   padding: 28px;
 }
@@ -307,6 +321,42 @@ th {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.link-button {
+  width: auto;
+  min-height: auto;
+  padding: 0;
+  background: transparent;
+  color: #126f67;
+  font-weight: 800;
+}
+
+.task-groups {
+  display: grid;
+  gap: 14px;
+}
+
+.task-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+}
+
+.task-tags,
+.chip-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.task-tags {
+  margin-top: 10px;
+}
+
+.chip {
+  font-size: 12px;
 }
 
 .list {
@@ -459,6 +509,13 @@ th {
 .status-APPROVED { background: #e8f5e9; color: #2e7d32; }
 .status-SIGNED { background: #edf7f5; color: #126f67; }
 .status-REJECTED { background: #ffebee; color: #c62828; }
+.status-draft { background: #e8f4f8; color: #2b6e8a; }
+.status-assigned { background: #fff3e0; color: #b85c00; }
+.status-countersigned { background: #e8f5e9; color: #2e7d32; }
+.status-finalized { background: #e3f2fd; color: #1565c0; }
+.status-approved { background: #e8f5e9; color: #2e7d32; }
+.status-signed { background: #edf7f5; color: #126f67; }
+.status-rejected { background: #ffebee; color: #c62828; }
 
 /* success */
 .success-msg {
@@ -492,4 +549,3 @@ th {
     position: static;
   }
 }
-
