@@ -149,8 +149,8 @@ onMounted(() => { loadRoles(); loadPermissions() })
             <td>{{ r.roleCode }}</td>
             <td>{{ r.roleName }}</td>
             <td>{{ r.description }}</td>
-            <td>
-              <span v-for="p in r.permissions" :key="p.id" class="status" style="margin-right:4px;font-size:12px">
+            <td class="chip-cell">
+              <span v-for="p in r.permissions" :key="p.id" class="status chip">
                 {{ p.permissionName }}
               </span>
             </td>

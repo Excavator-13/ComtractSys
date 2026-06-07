@@ -11,7 +11,10 @@ public interface ContractTaskRepository extends JpaRepository<ContractTask, Long
     List<ContractTask> findByAssigneeAndTaskStatus(SysUser assignee, TaskStatus status);
     Optional<ContractTask> findByContractIdAndAssigneeAndTaskTypeAndTaskStatus(Long contractId, SysUser assignee, TaskType type, TaskStatus status);
     boolean existsByContractIdAndTaskTypeAndTaskStatus(Long contractId, TaskType type, TaskStatus status);
+    boolean existsByContractIdAndAssigneeId(Long contractId, Long assigneeId);
     long countByTaskStatus(TaskStatus status);
+    long countByAssigneeAndTaskStatus(SysUser assignee, TaskStatus status);
     java.util.List<ContractTask> findByContractIdAndTaskType(Long contractId, TaskType taskType);
+    java.util.List<ContractTask> findByContractIdAndTaskTypeAndTaskStatus(Long contractId, TaskType taskType, TaskStatus taskStatus);
+    java.util.List<ContractTask> findByContractIdAndTaskStatus(Long contractId, TaskStatus taskStatus);
 }
-

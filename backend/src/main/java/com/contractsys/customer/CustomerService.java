@@ -2,6 +2,7 @@ package com.contractsys.customer;
 
 import com.contractsys.common.ApiException;
 import com.contractsys.common.PageRequests;
+import com.contractsys.contract.ContractRepository;
 import com.contractsys.customer.dto.CustomerRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
@@ -12,9 +13,11 @@ import java.time.LocalDate;
 @Service
 public class CustomerService {
     private final CustomerRepository customerRepository;
+    private final ContractRepository contractRepository;
 
-    public CustomerService(CustomerRepository customerRepository) {
+    public CustomerService(CustomerRepository customerRepository, ContractRepository contractRepository) {
         this.customerRepository = customerRepository;
+        this.contractRepository = contractRepository;
     }
 
     public Page<Customer> list(String keyword, int page, int size) {
@@ -44,6 +47,9 @@ public class CustomerService {
     public void delete(Long id) {
         Customer customer = customerRepository.findById(id).filter(c -> !c.isDeleted())
                 .orElseThrow(() -> ApiException.notFound("客户不存在"));
+        if (contractRepository.existsByCustomerIdAndDeletedFalse(id)) {
+            throw ApiException.conflict("客户已被合同引用，不能删除");
+        }
         customer.setDeleted(true);
     }
 

@@ -11,7 +11,7 @@ const showForm = ref(false)
 const editingId = ref(null)
 const showRoleForm = ref(false)
 const roleUserId = ref(null)
-const selectedRoleIds = ref([])
+const selectedRoleId = ref('')
 const page = ref(1)
 const total = ref(0)
 const pageSize = 10
@@ -101,22 +101,16 @@ async function toggleStatus(u) {
 
 function openRoleAssign(u) {
   roleUserId.value = u.id
-  selectedRoleIds.value = u.roles?.map(r => {
+  selectedRoleId.value = u.roles?.map(r => {
     const found = roles.value.find(rr => rr.roleCode === r)
     return found ? found.id : null
-  }).filter(Boolean) || []
+  }).filter(Boolean)?.[0] || ''
   showRoleForm.value = true
-}
-
-function toggleRole(roleId) {
-  const idx = selectedRoleIds.value.indexOf(roleId)
-  if (idx >= 0) selectedRoleIds.value.splice(idx, 1)
-  else selectedRoleIds.value.push(roleId)
 }
 
 async function saveRoles() {
   try {
-    await api.put(`/users/${roleUserId.value}/roles`, { roleIds: selectedRoleIds.value })
+    await api.put(`/users/${roleUserId.value}/roles`, { roleId: selectedRoleId.value || null })
     showRoleForm.value = false
     loadUsers()
   } catch (err) {
@@ -174,7 +168,7 @@ onMounted(() => { loadUsers(); loadRoles() })
       <h2>分配角色</h2>
       <div style="margin-top:14px;display:grid;gap:8px">
         <label v-for="r in roles" :key="r.id" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400">
-          <input type="checkbox" :checked="selectedRoleIds.includes(r.id)" @change="toggleRole(r.id)" />
+          <input v-model="selectedRoleId" type="radio" name="role" :value="r.id" style="width:auto;min-height:auto" />
           <strong>{{ r.roleName }}</strong>
           <span class="muted">{{ r.roleCode }} - {{ r.description }}</span>
         </label>

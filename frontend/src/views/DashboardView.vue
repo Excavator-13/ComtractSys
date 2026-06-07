@@ -14,7 +14,7 @@ const error = ref('')
 const canViewContracts = computed(() => auth.permissions.includes('contract:view'))
 const canCreateContract = computed(() => auth.permissions.includes('contract:create'))
 const canViewTasks = computed(() =>
-  auth.permissions.some(p => ['contract:countersign', 'contract:approve', 'contract:sign', 'contract:update'].includes(p))
+  auth.permissions.some(p => ['contract:assign', 'contract:countersign', 'contract:approve', 'contract:sign', 'contract:update'].includes(p))
 )
 
 async function loadData() {
@@ -37,7 +37,7 @@ async function loadData() {
 }
 
 function statusLabel(status) {
-  const map = { DRAFT:'起草', ASSIGNED:'已分配', COUNTERSIGNED:'会签完成', FINALIZED:'已定稿', APPROVED:'已审批', SIGNED:'已签订', REJECTED:'已拒绝', CANCELLED:'已取消' }
+  const map = { DRAFT:'待分配', ASSIGNED:'待会签', COUNTERSIGNED:'待定稿', FINALIZED:'待审批', APPROVED:'待签订', SIGNED:'已签订', REJECTED:'已拒绝', CANCELLED:'已取消' }
   return map[status] || status
 }
 

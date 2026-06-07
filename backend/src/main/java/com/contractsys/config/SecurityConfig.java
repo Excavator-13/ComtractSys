@@ -33,12 +33,21 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final ObjectMapper objectMapper;
     private final String allowedOrigins;
+    private final boolean apiDocsEnabled;
+    private final boolean swaggerUiEnabled;
+    private final boolean h2ConsoleEnabled;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, ObjectMapper objectMapper,
-                          @Value("${app.cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173}") String allowedOrigins) {
+                          @Value("${app.cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173}") String allowedOrigins,
+                          @Value("${springdoc.api-docs.enabled:true}") boolean apiDocsEnabled,
+                          @Value("${springdoc.swagger-ui.enabled:true}") boolean swaggerUiEnabled,
+                          @Value("${spring.h2.console.enabled:false}") boolean h2ConsoleEnabled) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.objectMapper = objectMapper;
         this.allowedOrigins = allowedOrigins;
+        this.apiDocsEnabled = apiDocsEnabled;
+        this.swaggerUiEnabled = swaggerUiEnabled;
+        this.h2ConsoleEnabled = h2ConsoleEnabled;
     }
 
     @Bean
@@ -48,14 +57,21 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::disable))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/register", "/api/v1/auth/login").permitAll()
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                        .requestMatchers("/h2-console/**").permitAll()
-                        .requestMatchers("/api/v1/**").authenticated()
-                        .anyRequest().permitAll())
+                .authorizeHttpRequests(auth -> {
+                    auth.requestMatchers("/api/v1/auth/register", "/api/v1/auth/login").permitAll();
+                    if (swaggerUiEnabled) {
+                        auth.requestMatchers("/swagger-ui/**", "/swagger-ui.html").permitAll();
+                    }
+                    if (apiDocsEnabled) {
+                        auth.requestMatchers("/v3/api-docs/**").permitAll();
+                    }
+                    if (h2ConsoleEnabled) {
+                        auth.requestMatchers("/h2-console/**").permitAll();
+                    }
+                    auth.requestMatchers("/api/v1/**").authenticated()
+                            .anyRequest().denyAll();
+                })
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((request, response, authException) -> {
                             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -72,6 +88,9 @@ public class SecurityConfig {
                                     ApiResponse.fail(40300, "无权限"));
                         }))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+        if (h2ConsoleEnabled) {
+            http.headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::disable));
+        }
         return http.build();
     }
 

@@ -7,6 +7,7 @@ import com.contractsys.common.ApiException;
 import com.contractsys.common.ApiResponse;
 import com.contractsys.common.PageResponse;
 import com.contractsys.common.PageRequests;
+import com.contractsys.log.OperationLogService;
 import com.contractsys.user.dto.AssignRolesRequest;
 import com.contractsys.user.dto.UserCreateRequest;
 import com.contractsys.user.dto.UserStatusRequest;
@@ -27,13 +28,16 @@ public class UserController {
     private final RoleRepository roleRepository;
     private final AuthService authService;
     private final PasswordEncoder passwordEncoder;
+    private final OperationLogService operationLogService;
 
     public UserController(UserRepository userRepository, RoleRepository roleRepository,
-                          AuthService authService, PasswordEncoder passwordEncoder) {
+                          AuthService authService, PasswordEncoder passwordEncoder,
+                          OperationLogService operationLogService) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.authService = authService;
         this.passwordEncoder = passwordEncoder;
+        this.operationLogService = operationLogService;
     }
 
     @GetMapping
@@ -73,7 +77,7 @@ public class UserController {
 
     @PostMapping
     public ApiResponse<UserView> create(@Valid @RequestBody UserCreateRequest request) {
-        authService.requireUser();
+        SysUser operator = authService.requireUser();
         if (userRepository.existsByUsernameAndDeletedFalse(request.username())) {
             throw ApiException.conflict("用户名已存在");
         }
@@ -83,20 +87,25 @@ public class UserController {
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         user.setPhone(request.phone());
         user.setEmail(request.email());
-        if (request.roleIds() != null) {
-            request.roleIds().forEach(roleId -> roleRepository.findById(roleId).ifPresent(user.getRoles()::add));
+        List<Long> requestedRoleIds = request.effectiveRoleIds();
+        if (requestedRoleIds != null) {
+            if (requestedRoleIds.size() > 1) {
+                throw ApiException.conflict("账号只能分配一个角色");
+            }
+            requestedRoleIds.forEach(roleId -> user.getRoles().add(findRole(roleId)));
         }
         if (user.getRoles().isEmpty()) {
             roleRepository.findByRoleCode("ROLE_NEW_USER").ifPresent(user.getRoles()::add);
         }
         userRepository.save(user);
+        operationLogService.record(operator, "USER", "新增用户", "USER", user.getId(), user.getUsername());
         return ApiResponse.ok("创建成功", UserView.from(user));
     }
 
     @PutMapping("/{id}")
     public ApiResponse<UserView> update(@PathVariable Long id,
                                          @Valid @RequestBody UserUpdateRequest request) {
-        authService.requireUser();
+        SysUser operator = authService.requireUser();
         SysUser user = userRepository.findById(id).filter(u -> !u.isDeleted())
                 .orElseThrow(() -> ApiException.notFound("用户不存在"));
         if (request.displayName() != null) user.setDisplayName(request.displayName());
@@ -106,13 +115,14 @@ public class UserController {
             user.setPasswordHash(passwordEncoder.encode(request.password()));
         }
         userRepository.save(user);
+        operationLogService.record(operator, "USER", "修改用户", "USER", user.getId(), user.getUsername());
         return ApiResponse.ok("更新成功", UserView.from(user));
     }
 
     @PatchMapping("/{id}/status")
     public ApiResponse<Void> toggleStatus(@PathVariable Long id,
                                            @Valid @RequestBody UserStatusRequest request) {
-        authService.requireUser();
+        SysUser operator = authService.requireUser();
         SysUser user = userRepository.findById(id).filter(u -> !u.isDeleted())
                 .orElseThrow(() -> ApiException.notFound("用户不存在"));
         if ("admin".equals(user.getUsername()) && request.status() == UserStatus.DISABLED) {
@@ -120,12 +130,14 @@ public class UserController {
         }
         user.setStatus(request.status());
         userRepository.save(user);
+        operationLogService.record(operator, "USER", "启停用户", "USER", user.getId(),
+                user.getUsername() + " -> " + request.status());
         return ApiResponse.ok(null);
     }
 
     @DeleteMapping("/{id}")
     public ApiResponse<Void> delete(@PathVariable Long id) {
-        authService.requireUser();
+        SysUser operator = authService.requireUser();
         SysUser user = userRepository.findById(id).filter(u -> !u.isDeleted())
                 .orElseThrow(() -> ApiException.notFound("用户不存在"));
         if ("admin".equals(user.getUsername())) {
@@ -133,23 +145,34 @@ public class UserController {
         }
         user.setDeleted(true);
         userRepository.save(user);
+        operationLogService.record(operator, "USER", "删除用户", "USER", user.getId(), user.getUsername());
         return ApiResponse.ok(null);
     }
 
     @PutMapping("/{id}/roles")
     public ApiResponse<UserView> assignRoles(@PathVariable Long id,
                                               @Valid @RequestBody AssignRolesRequest request) {
-        authService.requireUser();
+        SysUser operator = authService.requireUser();
         SysUser user = userRepository.findById(id).filter(u -> !u.isDeleted())
                 .orElseThrow(() -> ApiException.notFound("用户不存在"));
-        if ("admin".equals(user.getUsername()) && (request.roleIds() == null || request.roleIds().isEmpty())) {
+        List<Long> requestedRoleIds = request.effectiveRoleIds();
+        if ("admin".equals(user.getUsername()) && (requestedRoleIds == null || requestedRoleIds.isEmpty())) {
             throw ApiException.conflict("内置管理员至少需要保留一个角色");
         }
+        if (requestedRoleIds != null && requestedRoleIds.size() > 1) {
+            throw ApiException.conflict("账号只能分配一个角色");
+        }
         user.getRoles().clear();
-        if (request.roleIds() != null) {
-            request.roleIds().forEach(roleId -> roleRepository.findById(roleId).ifPresent(user.getRoles()::add));
+        if (requestedRoleIds != null) {
+            requestedRoleIds.forEach(roleId -> user.getRoles().add(findRole(roleId)));
         }
         userRepository.save(user);
+        operationLogService.record(operator, "USER", "分配角色", "USER", user.getId(), user.getUsername());
         return ApiResponse.ok("角色分配成功", UserView.from(user));
+    }
+
+    private SysRole findRole(Long roleId) {
+        return roleRepository.findById(roleId)
+                .orElseThrow(() -> ApiException.notFound("角色不存在: " + roleId));
     }
 }
