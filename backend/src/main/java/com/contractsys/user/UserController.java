@@ -112,6 +112,9 @@ public class UserController {
         if (request.phone() != null) user.setPhone(request.phone());
         if (request.email() != null) user.setEmail(request.email());
         if (request.password() != null && !request.password().isBlank()) {
+            if (request.password().length() < 6) {
+                throw ApiException.badRequest("密码长度不能少于6位");
+            }
             user.setPasswordHash(passwordEncoder.encode(request.password()));
         }
         userRepository.save(user);

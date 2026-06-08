@@ -346,37 +346,78 @@ th {
   font-size: 16px;
 }
 
-.people-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
-  gap: 10px;
-}
-
-.person-option {
-  min-height: 64px;
-  display: grid;
-  gap: 4px;
-  justify-items: start;
-  padding: 10px 12px;
+.tag-picker {
   border: 1px solid #d8e1ea;
   border-radius: 6px;
   background: #fff;
-  color: #26364d;
-  text-align: left;
+  overflow: hidden;
 }
 
-.person-option span {
-  font-weight: 800;
+.selected-tags {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #edf1f5;
+  background: #f8fafc;
 }
 
-.person-option small {
+.tag-placeholder {
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+.selected-tag {
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid #9dc7c1;
+  border-radius: 999px;
+  background: #edf7f5;
+  color: #126f67;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.selected-tag span {
+  margin-left: 6px;
   color: #64748b;
 }
 
-.person-option.selected {
-  border-color: #126f67;
-  background: #edf7f5;
-  color: #126f67;
+.checkbox-list {
+  max-height: 176px;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.check-option {
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: 20px minmax(90px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  color: #26364d;
+}
+
+.check-option:hover {
+  background: #f3f7f9;
+}
+
+.check-option input {
+  width: 15px;
+  height: 15px;
+  accent-color: #126f67;
+}
+
+.check-option span {
+  font-weight: 700;
+}
+
+.check-option small {
+  color: #64748b;
 }
 
 .attachment-box {
@@ -628,6 +669,7 @@ th {
 .status-APPROVED { background: #e8f5e9; color: #2e7d32; }
 .status-SIGNED { background: #edf7f5; color: #126f67; }
 .status-REJECTED { background: #ffebee; color: #c62828; }
+.status-CANCELLED { background: #f1f5f9; color: #475569; }
 .status-draft { background: #e8f4f8; color: #2b6e8a; }
 .status-assigned { background: #fff3e0; color: #b85c00; }
 .status-countersigned { background: #e8f5e9; color: #2e7d32; }
@@ -635,6 +677,7 @@ th {
 .status-approved { background: #e8f5e9; color: #2e7d32; }
 .status-signed { background: #edf7f5; color: #126f67; }
 .status-rejected { background: #ffebee; color: #c62828; }
+.status-cancelled { background: #f1f5f9; color: #475569; }
 
 /* success */
 .success-msg {

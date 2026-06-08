@@ -167,6 +167,14 @@ public class ContractController {
         return ApiResponse.ok(null);
     }
 
+    @PostMapping("/contracts/{id}/cancel")
+    @RequirePermission("contract:delete")
+    public ApiResponse<Void> cancel(@PathVariable Long id) {
+        SysUser user = authService.requireUser();
+        contractService.cancel(id, user);
+        return ApiResponse.ok(null);
+    }
+
     @GetMapping("/logs")
     @RequirePermission("log:view")
     public ApiResponse<PageResponse<OperationLog>> logs(@RequestParam(defaultValue = "") String keyword,
@@ -198,7 +206,7 @@ public class ContractController {
                                                               @RequestParam("file") MultipartFile file) {
         SysUser user = authService.requireUser();
         Contract contract = contractService.getContract(id);
-        contractService.ensureCanViewContract(contract.getId(), user);
+        contractService.ensureCanModifyContract(contract.getId(), user);
         Attachment attachment = saveAttachment(contract, file, user);
         return ApiResponse.ok("上传成功", Map.of("id", attachment.getId(), "originalName", attachment.getOriginalName()));
     }
@@ -225,7 +233,7 @@ public class ContractController {
         SysUser user = authService.requireUser();
         Attachment attachment = attachmentRepository.findById(id)
                 .orElseThrow(() -> com.contractsys.common.ApiException.notFound("附件不存在"));
-        contractService.ensureCanViewContract(attachment.getContract().getId(), user);
+        contractService.ensureCanModifyContract(attachment.getContract().getId(), user);
         Path filePath = fileStorageService.resolve(attachment.getStoredName());
         if (!Files.exists(filePath)) {
             throw com.contractsys.common.ApiException.notFound("附件文件不存在");

@@ -67,9 +67,11 @@ async function save() {
   }
   try {
     if (editingId.value) {
+      if (form.password && form.password.length < 6) { error.value = '密码长度不能少于6位'; return }
       await api.put(`/users/${editingId.value}`, form)
     } else {
       if (!form.password) { error.value = '密码不能为空'; return }
+      if (form.password.length < 6) { error.value = '密码长度不能少于6位'; return }
       await api.post('/users', form)
     }
     showForm.value = false
@@ -153,7 +155,7 @@ onMounted(() => { loadUsers(); loadRoles() })
       <h2>{{ editingId ? '编辑用户' : '新增用户' }}</h2>
       <div class="form-grid" style="margin-top:14px">
         <label>用户名 *<input v-model="form.username" :disabled="!!editingId" /></label>
-        <label>密码 {{ editingId ? '(留空不修改)' : '*' }}<input v-model="form.password" type="password" /></label>
+        <label>密码 {{ editingId ? '(留空不修改)' : '*' }}<input v-model="form.password" type="password" minlength="6" /></label>
         <label>显示名称<input v-model="form.displayName" /></label>
         <label>电话<input v-model="form.phone" /></label>
         <label>邮箱<input v-model="form.email" /></label>

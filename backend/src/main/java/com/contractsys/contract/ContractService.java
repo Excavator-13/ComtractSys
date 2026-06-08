@@ -102,6 +102,7 @@ public class ContractService {
     @Transactional
     public ContractDetailView assign(Long id, AssignRequest request, SysUser operator) {
         Contract contract = getContract(id);
+        ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.DRAFT);
         finishTask(id, operator, TaskType.ASSIGN, TaskStatus.DONE, "已完成分配");
         completeRemainingPendingTasks(id, TaskType.ASSIGN, "其他分配待办已关闭");
@@ -124,6 +125,7 @@ public class ContractService {
     @Transactional
     public ContractDetailView countersign(Long id, OpinionRequest request, SysUser operator) {
         Contract contract = getContract(id);
+        ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.ASSIGNED);
         finishTask(id, operator, TaskType.COUNTERSIGN, TaskStatus.DONE, request.opinion());
         if (!taskRepository.existsByContractIdAndTaskTypeAndTaskStatus(id, TaskType.COUNTERSIGN, TaskStatus.PENDING)) {
@@ -136,6 +138,7 @@ public class ContractService {
     @Transactional
     public ContractDetailView finalizeContract(Long id, FinalizeRequest request, SysUser operator) {
         Contract contract = getContract(id);
+        ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.COUNTERSIGNED, ContractStatus.REJECTED);
         if (!contract.getDrafter().getId().equals(operator.getId())) {
             throw ApiException.forbidden("只有起草人可以定稿");
@@ -149,6 +152,7 @@ public class ContractService {
     @Transactional
     public ContractDetailView approve(Long id, ApproveRequest request, SysUser operator) {
         Contract contract = getContract(id);
+        ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.FINALIZED);
         TaskStatus taskStatus = request.result() == ApproveResult.APPROVED ? TaskStatus.DONE : TaskStatus.REJECTED;
         finishTask(id, operator, TaskType.APPROVAL, taskStatus, request.opinion());
@@ -163,6 +167,7 @@ public class ContractService {
     @Transactional
     public ContractDetailView sign(Long id, SignRequest request, SysUser operator) {
         Contract contract = getContract(id);
+        ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.APPROVED);
         finishTask(id, operator, TaskType.SIGN, TaskStatus.DONE, request.signInfo());
         contract.setSignedDate(request.signedDate());
@@ -176,6 +181,7 @@ public class ContractService {
     @Transactional
     public ContractView update(Long id, ContractCreateRequest request, SysUser operator) {
         Contract contract = getContract(id);
+        ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.DRAFT, ContractStatus.COUNTERSIGNED, ContractStatus.REJECTED);
         if (!contract.getDrafter().getId().equals(operator.getId())) {
             throw ApiException.forbidden("只有起草人可以修改合同");
@@ -206,6 +212,16 @@ public class ContractService {
         recordState(contract, contract.getStatus(), contract.getStatus(), operator, "删除合同");
     }
 
+    @Transactional
+    public void cancel(Long id, SysUser operator) {
+        Contract contract = getContract(id);
+        if (contract.getStatus() == ContractStatus.SIGNED || contract.getStatus() == ContractStatus.CANCELLED) {
+            throw ApiException.conflict("当前合同状态不允许取消");
+        }
+        completeRemainingPendingTasks(id, "合同已取消，待办已关闭");
+        changeStatus(contract, ContractStatus.CANCELLED, operator, "取消合同");
+    }
+
     public Page<ContractStateHistory> logs(String keyword, int page, int size) {
         var pr = PageRequests.of(page, size);
         if (keyword == null || keyword.isEmpty()) {
@@ -217,15 +233,13 @@ public class ContractService {
     @Transactional
     public ContractDetailView resubmit(Long id, SysUser operator) {
         Contract contract = getContract(id);
+        ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.REJECTED);
-        // Reset rejected approval tasks back to PENDING
         List<ContractTask> approvalTasks = taskRepository.findByContractIdAndTaskType(contract.getId(), TaskType.APPROVAL);
         for (ContractTask task : approvalTasks) {
-            if (task.getTaskStatus() == TaskStatus.REJECTED) {
-                task.setTaskStatus(TaskStatus.PENDING);
-                task.setOpinion(null);
-                task.setOperatedAt(null);
-            }
+            task.setTaskStatus(TaskStatus.PENDING);
+            task.setOpinion(null);
+            task.setOperatedAt(null);
         }
         taskRepository.saveAll(approvalTasks);
         changeStatus(contract, ContractStatus.FINALIZED, operator, "重新提交审批");
@@ -324,6 +338,12 @@ public class ContractService {
         ensureCanViewContract(getContract(contractId), user);
     }
 
+    public void ensureCanModifyContract(Long contractId, SysUser user) {
+        Contract contract = getContract(contractId);
+        ensureCanViewContract(contract, user);
+        ensureMutableContract(contract);
+    }
+
     public boolean canViewContract(Contract contract, SysUser user) {
         return hasPermission(user, "contract:query")
                 || contract.getDrafter().getId().equals(user.getId())
@@ -409,6 +429,22 @@ public class ContractService {
             task.setOperatedAt(LocalDateTime.now());
         }
         taskRepository.saveAll(tasks);
+    }
+
+    private void completeRemainingPendingTasks(Long contractId, String opinion) {
+        List<ContractTask> tasks = taskRepository.findByContractIdAndTaskStatus(contractId, TaskStatus.PENDING);
+        for (ContractTask task : tasks) {
+            task.setTaskStatus(TaskStatus.DONE);
+            task.setOpinion(opinion);
+            task.setOperatedAt(LocalDateTime.now());
+        }
+        taskRepository.saveAll(tasks);
+    }
+
+    private void ensureMutableContract(Contract contract) {
+        if (contract.getStatus() == ContractStatus.CANCELLED) {
+            throw ApiException.conflict("已取消合同不能继续操作");
+        }
     }
 
     private void requireStatus(Contract contract, ContractStatus... statuses) {

@@ -3,7 +3,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   ClipboardList, UsersRound, Handshake, LogOut,
-  LayoutDashboard, Settings, ShieldCheck, UserCog, ScrollText, ChevronDown, Search
+  LayoutDashboard, Settings, ShieldCheck, UserCog, ScrollText, ChevronDown, Search, KeyRound
 } from 'lucide-vue-next'
 import { useAuthStore } from '../stores/auth'
 import { api } from '../api'
@@ -23,6 +23,7 @@ const menuItems = [
 const sysItems = [
   { path: '/system/users', label: '用户管理', icon: UserCog, permission: 'user:manage' },
   { path: '/system/roles', label: '角色管理', icon: ShieldCheck, permission: 'role:manage' },
+  { path: '/system/permissions', label: '权限管理', icon: KeyRound, permission: 'permission:manage' },
   { path: '/system/logs', label: '操作日志', icon: ScrollText, permission: 'log:view' },
 ]
 

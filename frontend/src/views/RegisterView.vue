@@ -15,6 +15,10 @@ async function register() {
     error.value = '两次输入的密码不一致'
     return
   }
+  if (form.password.length < 6) {
+    error.value = '密码长度不能少于6位'
+    return
+  }
   loading.value = true
   try {
     await api.post('/auth/register', form)
@@ -51,14 +55,14 @@ async function register() {
           <span>密码</span>
           <div class="input">
             <LockKeyhole :size="18" />
-            <input v-model="form.password" type="password" autocomplete="new-password" required />
+            <input v-model="form.password" type="password" autocomplete="new-password" minlength="6" required />
           </div>
         </label>
         <label>
           <span>确认密码</span>
           <div class="input">
             <LockKeyhole :size="18" />
-            <input v-model="form.confirmPassword" type="password" required />
+            <input v-model="form.confirmPassword" type="password" minlength="6" required />
           </div>
         </label>
         <p v-if="error" class="error">{{ error }}</p>

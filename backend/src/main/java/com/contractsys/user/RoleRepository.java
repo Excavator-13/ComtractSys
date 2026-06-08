@@ -7,4 +7,5 @@ import java.util.Optional;
 public interface RoleRepository extends JpaRepository<SysRole, Long> {
     Optional<SysRole> findByRoleCode(String roleCode);
     boolean existsByRoleCode(String roleCode);
+    boolean existsByPermissions_Id(Long permissionId);
 }

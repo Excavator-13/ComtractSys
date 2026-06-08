@@ -12,6 +12,7 @@ import CustomerListView from './views/CustomerListView.vue'
 import MyTasksView from './views/MyTasksView.vue'
 import UserManagementView from './views/system/UserManagementView.vue'
 import RoleManagementView from './views/system/RoleManagementView.vue'
+import PermissionManagementView from './views/system/PermissionManagementView.vue'
 import LogView from './views/system/LogView.vue'
 
 function hasAccess(required, permissions) {
@@ -39,6 +40,7 @@ const router = createRouter({
         { path: 'tasks', component: MyTasksView, meta: { title: '我的待办', permission: ['contract:assign', 'contract:countersign', 'contract:approve', 'contract:sign', 'contract:update'] } },
         { path: 'system/users', component: UserManagementView, meta: { title: '用户管理', permission: 'user:manage' } },
         { path: 'system/roles', component: RoleManagementView, meta: { title: '角色管理', permission: 'role:manage' } },
+        { path: 'system/permissions', component: PermissionManagementView, meta: { title: '权限管理', permission: 'permission:manage' } },
         { path: 'system/logs', component: LogView, meta: { title: '操作日志', permission: 'log:view' } },
       ]
     }
