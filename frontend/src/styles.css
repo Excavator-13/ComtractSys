@@ -683,6 +683,36 @@ th {
   flex-wrap: wrap;
 }
 
+.date-range-filter {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid #dfe6ee;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.date-range-filter span {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.date-range-filter em {
+  color: #64748b;
+  font-style: normal;
+  font-size: 13px;
+}
+
+.date-range-filter input {
+  width: 138px;
+  min-height: 32px;
+  padding: 5px 7px;
+}
+
 /* system menu */
 .sys-group {
   margin-top: 4px;

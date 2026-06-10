@@ -124,10 +124,18 @@ onMounted(() => {
         <option value="">全部客户</option>
         <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }}</option>
       </select>
-      <input v-model="beginFrom" type="date" title="开始日期起" style="max-width:150px" @change="search" />
-      <input v-model="beginTo" type="date" title="开始日期止" style="max-width:150px" @change="search" />
-      <input v-model="endFrom" type="date" title="结束日期起" style="max-width:150px" @change="search" />
-      <input v-model="endTo" type="date" title="结束日期止" style="max-width:150px" @change="search" />
+      <div class="date-range-filter" aria-label="合同开始日期范围">
+        <span>开始日期</span>
+        <input v-model="beginFrom" type="date" title="开始日期从" @change="search" />
+        <em>至</em>
+        <input v-model="beginTo" type="date" title="开始日期至" @change="search" />
+      </div>
+      <div class="date-range-filter" aria-label="合同结束日期范围">
+        <span>结束日期</span>
+        <input v-model="endFrom" type="date" title="结束日期从" @change="search" />
+        <em>至</em>
+        <input v-model="endTo" type="date" title="结束日期至" @change="search" />
+      </div>
       <button class="secondary" @click="search">查询</button>
       <button class="secondary" @click="exportContracts"><Download :size="16" /> 导出</button>
       <button class="icon" @click="loadContracts"><RefreshCcw :size="16" /></button>
