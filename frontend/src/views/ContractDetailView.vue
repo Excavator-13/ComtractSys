@@ -1,7 +1,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, UserCheck, Paperclip, Download, Trash2, Upload, RotateCcw, XCircle } from 'lucide-vue-next'
+import { ArrowLeft, UserCheck, Paperclip, Download, Trash2, Upload, RotateCcw, XCircle, Eye } from 'lucide-vue-next'
 import { api } from '../api'
 import { useAuthStore } from '../stores/auth'
 
@@ -11,6 +11,8 @@ const auth = useAuthStore()
 const contract = ref(null)
 const tasks = ref([])
 const attachments = ref([])
+const timeline = ref([])
+const versions = ref([])
 const users = ref([])
 const error = ref('')
 const success = ref('')
@@ -150,6 +152,20 @@ async function doResubmit() {
   }
 }
 
+async function loadTimeline() {
+  try {
+    const res = await api.get(`/contracts/${route.params.id}/timeline`)
+    timeline.value = res.data
+  } catch {}
+}
+
+async function loadVersions() {
+  try {
+    const res = await api.get(`/contracts/${route.params.id}/versions`)
+    versions.value = res.data
+  } catch {}
+}
+
 async function doCancel() {
   if (!confirm('确认取消该合同？取消后会关闭所有待办任务。')) return
   try {
@@ -220,6 +236,17 @@ function userName(user) {
   return user.displayName || user.username
 }
 
+async function previewAttachment(a) {
+  try {
+    const res = await api.get(`/attachments/${a.id}/preview`, { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    window.open(url, '_blank', 'noopener')
+    setTimeout(() => URL.revokeObjectURL(url), 60000)
+  } catch (err) {
+    error.value = err.message
+  }
+}
+
 function selectedUsers(field) {
   return assignableUsers.value.filter(u => assignForm[field].includes(u.id))
 }
@@ -241,11 +268,17 @@ function removeUser(field, userId) {
   if (idx >= 0) list.splice(idx, 1)
 }
 
+function canPreview(a) {
+  return /\.(pdf|jpg|jpeg|png|gif|bmp)$/i.test(a.originalName || '')
+}
+
 onMounted(() => {
   if (route.query.tab) activeTab.value = route.query.tab
   loadDetail()
   loadUsers()
   loadAttachments()
+  loadTimeline()
+  loadVersions()
 })
 </script>
 
@@ -267,6 +300,8 @@ onMounted(() => {
       <div class="tabs">
         <button :class="{ selected: activeTab === 'info' }" @click="activeTab = 'info'">基础信息</button>
         <button :class="{ selected: activeTab === 'tasks' }" @click="activeTab = 'tasks'">流程任务</button>
+        <button :class="{ selected: activeTab === 'timeline' }" @click="activeTab = 'timeline'">流程时间线</button>
+        <button :class="{ selected: activeTab === 'versions' }" @click="activeTab = 'versions'">版本历史</button>
         <button :class="{ selected: activeTab === 'attachments' }" @click="activeTab = 'attachments'">
           附件 ({{ attachments.length }})
         </button>
@@ -328,6 +363,34 @@ onMounted(() => {
         </table>
       </div>
 
+      <div v-if="activeTab === 'timeline'" class="tab-content">
+        <div v-if="timeline.length === 0" class="muted" style="text-align:center;padding:24px">暂无流程记录</div>
+        <ol v-else class="timeline-list">
+          <li v-for="item in timeline" :key="item.id">
+            <div class="timeline-dot"></div>
+            <div>
+              <strong>{{ statusLabel(item.fromStatus) }} -> {{ statusLabel(item.toStatus) }}</strong>
+              <p>{{ item.remark || '-' }}</p>
+              <span>{{ item.operatorName }} · {{ item.createdAt?.slice(0, 16) }}</span>
+            </div>
+          </li>
+        </ol>
+      </div>
+
+      <div v-if="activeTab === 'versions'" class="tab-content">
+        <div v-if="versions.length === 0" class="muted" style="text-align:center;padding:24px">暂无版本记录</div>
+        <div v-else class="version-list">
+          <article v-for="v in versions" :key="v.id" class="version-item">
+            <div class="assign-section-head">
+              <h3>V{{ v.versionNo }} · {{ v.name }}</h3>
+              <span class="muted">{{ v.operatorName }} · {{ v.createdAt?.slice(0, 16) }}</span>
+            </div>
+            <p class="muted">{{ v.remark }}</p>
+            <pre class="content-box">{{ v.content }}</pre>
+          </article>
+        </div>
+      </div>
+
       <div v-if="activeTab === 'attachments'" class="tab-content">
         <div style="margin-bottom:14px">
           <label v-if="canModifyAttachments" class="secondary" style="display:inline-flex;cursor:pointer;min-height:38px;align-items:center;gap:8px;padding:0 14px;border-radius:6px;font-weight:700">
@@ -348,6 +411,7 @@ onMounted(() => {
               <td>{{ a.uploaderName }}</td>
               <td>{{ a.uploadedAt?.slice(0, 16) }}</td>
               <td class="row-actions">
+                <button v-if="canPreview(a)" @click="previewAttachment(a)"><Eye :size="14" /> 预览</button>
                 <button @click="downloadAttachment(a)"><Download :size="14" /> 下载</button>
                 <button v-if="canModifyAttachments" @click="deleteAttachment(a)"><Trash2 :size="14" /> 删除</button>
               </td>

@@ -608,6 +608,50 @@ th {
   overflow: auto;
 }
 
+.timeline-list,
+.version-list {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+}
+
+.timeline-list {
+  list-style: none;
+}
+
+.timeline-list li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 12px;
+  padding: 4px 0 14px;
+}
+
+.timeline-dot {
+  width: 10px;
+  height: 10px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: #126f67;
+  box-shadow: 0 0 0 4px #edf7f5;
+}
+
+.timeline-list p,
+.version-item p {
+  margin: 6px 0;
+}
+
+.timeline-list span {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.version-item {
+  padding: 14px;
+  border: 1px solid #edf1f5;
+  border-radius: 6px;
+}
+
 /* pagination */
 .pagination {
   display: flex;

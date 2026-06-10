@@ -2,22 +2,24 @@ package com.contractsys.customer;
 
 import com.contractsys.common.ApiException;
 import com.contractsys.common.PageRequests;
+import com.contractsys.contract.ContractNumberService;
 import com.contractsys.contract.ContractRepository;
 import com.contractsys.customer.dto.CustomerRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
-
 @Service
 public class CustomerService {
     private final CustomerRepository customerRepository;
     private final ContractRepository contractRepository;
+    private final ContractNumberService numberService;
 
-    public CustomerService(CustomerRepository customerRepository, ContractRepository contractRepository) {
+    public CustomerService(CustomerRepository customerRepository, ContractRepository contractRepository,
+                           ContractNumberService numberService) {
         this.customerRepository = customerRepository;
         this.contractRepository = contractRepository;
+        this.numberService = numberService;
     }
 
     public Page<Customer> list(String keyword, int page, int size) {
@@ -30,9 +32,11 @@ public class CustomerService {
     @Transactional
     public Customer create(CustomerRequest request) {
         Customer customer = new Customer();
-        customer.setCustomerNo("KH" + LocalDate.now().toString().replace("-", "") + System.currentTimeMillis() % 100000);
+        customer.setCustomerNo(numberService.temporaryNumber());
         fill(customer, request);
-        return customerRepository.save(customer);
+        Customer saved = customerRepository.saveAndFlush(customer);
+        saved.setCustomerNo(numberService.customerNo(saved.getId()));
+        return saved;
     }
 
     @Transactional

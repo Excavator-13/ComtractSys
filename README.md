@@ -24,6 +24,27 @@ http://localhost:8080
 ```
 
 开发环境默认使用 H2 内存数据库，并通过 Flyway 初始化表结构；联调或部署可切换到 MySQL profile。
+也可以使用 `functional-test` profile 以 H2 内存库启动并自动填充演示数据：
+
+```powershell
+cd backend
+mvn spring-boot:run "-Dspring-boot.run.profiles=functional-test"
+```
+
+演示数据默认关闭。普通启动时系统会清理 `demo_` 用户和“演示”前缀业务数据；需要填充时可显式打开：
+
+```powershell
+$env:DEMO_DATA_ENABLED="true"
+mvn spring-boot:run
+```
+
+演示账号密码均为 `123456`：
+
+```text
+demo_drafter / 123456
+demo_manager / 123456
+demo_approver / 123456
+```
 
 认证使用 JWT，开发环境提供默认密钥；联调或部署时建议通过环境变量覆盖：
 
@@ -43,6 +64,8 @@ admin / 123456
 
 ## Docker 本地部署
 
+默认 Docker 环境使用 PostgreSQL 持久化数据，并启用 Redis 缓存：
+
 本地 Docker 可直接启动完整环境：
 
 ```powershell
@@ -60,6 +83,8 @@ docker compose up -d --build
 前端：http://localhost:5173
 后端：http://localhost:18080
 Swagger：http://localhost:18080/swagger-ui/index.html
+PostgreSQL：localhost:5432 / contractsys / contractsys
+Redis：localhost:6379
 ```
 
 查看日志：
@@ -82,10 +107,10 @@ docker compose down
 
 ## MySQL 联调
 
-如果只想启动 MySQL，再用本机 Maven 跑后端：
+MySQL 配置仍保留为可选 profile。如果只想启动 MySQL，再用本机 Maven 跑后端：
 
 ```powershell
-docker compose up -d mysql
+docker compose --profile mysql up -d mysql
 ```
 
 使用 MySQL profile 启动后端：

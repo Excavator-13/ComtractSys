@@ -23,6 +23,12 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration/h2
+  cache:
+    type: simple
+  data:
+    redis:
+      repositories:
+        enabled: false
   servlet:
     multipart:
       max-file-size: 20MB
@@ -37,6 +43,8 @@ app:
   jwt:
     secret: ${JWT_SECRET:dev-secret-key-change-in-production-min-256-bits-long-enough-for-hs256}
     expiration: 86400
+  demo-data:
+    enabled: ${DEMO_DATA_ENABLED:false}
 
 springdoc:
   api-docs:
@@ -62,3 +70,55 @@ spring:
       ddl-auto: none
   flyway:
     locations: classpath:db/migration/mysql
+
+---
+spring:
+  config:
+    activate:
+      on-profile: postgres
+  datasource:
+    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/contractsys}
+    username: ${POSTGRES_USERNAME:contractsys}
+    password: ${POSTGRES_PASSWORD:contractsys}
+    driver-class-name: org.postgresql.Driver
+  h2:
+    console:
+      enabled: false
+  jpa:
+    hibernate:
+      ddl-auto: none
+  flyway:
+    locations: classpath:db/migration/postgres
+
+---
+spring:
+  config:
+    activate:
+      on-profile: redis
+  cache:
+    type: redis
+    redis:
+      time-to-live: 10m
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: functional-test
+  datasource:
+    url: jdbc:h2:mem:contractsys_func;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  cache:
+    type: simple
+  flyway:
+    locations: classpath:db/migration/h2
+app:
+  demo-data:
+    enabled: true

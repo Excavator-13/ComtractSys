@@ -6,9 +6,11 @@ import { api } from '../api'
 
 const router = useRouter()
 const customers = ref([])
+const templates = ref([])
 const error = ref('')
 const loading = ref(false)
 const files = ref([])
+const selectedTemplateId = ref('')
 
 const form = reactive({
   name: '',
@@ -63,6 +65,20 @@ function handleFiles(e) {
   files.value = Array.from(e.target.files || [])
 }
 
+async function loadTemplates() {
+  try {
+    const res = await api.get('/contract-templates')
+    templates.value = res.data
+  } catch {}
+}
+
+function applyTemplate() {
+  const template = templates.value.find(t => t.id === Number(selectedTemplateId.value))
+  if (!template) return
+  form.content = template.content
+  if (!form.name) form.name = template.name.replace('模板', '')
+}
+
 function removeFile(index) {
   files.value.splice(index, 1)
 }
@@ -73,7 +89,10 @@ function fileSizeLabel(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
-onMounted(loadCustomers)
+onMounted(() => {
+  loadCustomers()
+  loadTemplates()
+})
 </script>
 
 <template>
@@ -94,6 +113,15 @@ onMounted(loadCustomers)
         </label>
         <label>开始日期<input v-model="form.beginDate" type="date" required /></label>
         <label>结束日期<input v-model="form.endDate" type="date" required /></label>
+        <label class="full">合同模板
+          <div class="search-bar">
+            <select v-model="selectedTemplateId" style="max-width:280px">
+              <option value="">不使用模板</option>
+              <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
+            </select>
+            <button class="secondary" type="button" :disabled="!selectedTemplateId" @click="applyTemplate">套用模板</button>
+          </div>
+        </label>
         <label class="full">合同内容<textarea v-model="form.content" rows="8" placeholder="输入合同正文内容" required /></label>
         <div class="full attachment-box">
           <div class="attachment-head">

@@ -1,0 +1,135 @@
+package com.contractsys.contract;
+
+import com.contractsys.common.ApiException;
+import com.contractsys.contract.dto.AttachmentView;
+import com.contractsys.log.OperationLogService;
+import com.contractsys.user.SysUser;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+
+@Service
+public class ContractAttachmentService {
+    private final ContractService contractService;
+    private final FileStorageService fileStorageService;
+    private final AttachmentRepository attachmentRepository;
+    private final OperationLogService operationLogService;
+
+    public ContractAttachmentService(ContractService contractService,
+                                     FileStorageService fileStorageService,
+                                     AttachmentRepository attachmentRepository,
+                                     OperationLogService operationLogService) {
+        this.contractService = contractService;
+        this.fileStorageService = fileStorageService;
+        this.attachmentRepository = attachmentRepository;
+        this.operationLogService = operationLogService;
+    }
+
+    @Transactional
+    public AttachmentView upload(Long contractId, MultipartFile file, SysUser user) {
+        Contract contract = contractService.getContract(contractId);
+        contractService.ensureCanModifyContract(contractId, user);
+        Attachment attachment = save(contract, file, user);
+        return AttachmentView.from(attachment);
+    }
+
+    @Transactional
+    public void uploadAll(Long contractId, List<MultipartFile> files, SysUser user) {
+        if (files == null) {
+            return;
+        }
+        Contract contract = contractService.getContract(contractId);
+        contractService.ensureCanModifyContract(contractId, user);
+        files.stream()
+                .filter(file -> file != null && !file.isEmpty())
+                .forEach(file -> save(contract, file, user));
+    }
+
+    public List<AttachmentView> list(Long contractId, SysUser user) {
+        contractService.ensureCanViewContract(contractId, user);
+        return attachmentRepository.findByContractIdOrderByUploadedAtDesc(contractId).stream()
+                .map(AttachmentView::from)
+                .toList();
+    }
+
+    public AttachmentResource download(Long attachmentId, SysUser user) {
+        Attachment attachment = getAttachmentForView(attachmentId, user);
+        return resource(attachment, MediaType.APPLICATION_OCTET_STREAM);
+    }
+
+    public AttachmentResource preview(Long attachmentId, SysUser user) {
+        Attachment attachment = getAttachmentForView(attachmentId, user);
+        if (!isPreviewable(attachment.getOriginalName())) {
+            throw ApiException.badRequest("该附件类型暂不支持预览");
+        }
+        MediaType contentType = MediaType.parseMediaType(attachment.getContentType() == null
+                ? MediaType.APPLICATION_OCTET_STREAM_VALUE
+                : attachment.getContentType());
+        return resource(attachment, contentType);
+    }
+
+    @Transactional
+    public void delete(Long attachmentId, SysUser user) {
+        Attachment attachment = attachmentRepository.findById(attachmentId)
+                .orElseThrow(() -> ApiException.notFound("附件不存在"));
+        contractService.ensureCanModifyContract(attachment.getContract().getId(), user);
+        try {
+            Files.deleteIfExists(fileStorageService.resolve(attachment.getStoredName()));
+        } catch (IOException ignored) {
+        }
+        attachmentRepository.delete(attachment);
+        operationLogService.record(user, "CONTRACT", "删除附件", "ATTACHMENT", attachment.getId(),
+                attachment.getOriginalName());
+    }
+
+    private Attachment save(Contract contract, MultipartFile file, SysUser user) {
+        FileStorageService.StoredFile stored = fileStorageService.store(file);
+        Attachment attachment = new Attachment();
+        attachment.setContract(contract);
+        attachment.setOriginalName(stored.originalName());
+        attachment.setStoredName(stored.storedName());
+        attachment.setContentType(stored.contentType() == null ? MediaType.APPLICATION_OCTET_STREAM_VALUE : stored.contentType());
+        attachment.setFileSize(stored.fileSize());
+        attachment.setUploader(user);
+        attachmentRepository.save(attachment);
+        operationLogService.record(user, "CONTRACT", "上传附件", "ATTACHMENT", attachment.getId(),
+                contract.getContractNo() + " " + attachment.getOriginalName());
+        return attachment;
+    }
+
+    private Attachment getAttachmentForView(Long attachmentId, SysUser user) {
+        Attachment attachment = attachmentRepository.findById(attachmentId)
+                .orElseThrow(() -> ApiException.notFound("附件不存在"));
+        contractService.ensureCanViewContract(attachment.getContract().getId(), user);
+        return attachment;
+    }
+
+    private AttachmentResource resource(Attachment attachment, MediaType contentType) {
+        Path filePath = fileStorageService.resolve(attachment.getStoredName());
+        if (!Files.exists(filePath)) {
+            throw ApiException.notFound("附件文件不存在");
+        }
+        return new AttachmentResource(new FileSystemResource(filePath), attachment.getOriginalName(), contentType);
+    }
+
+    private boolean isPreviewable(String filename) {
+        String lower = filename == null ? "" : filename.toLowerCase();
+        return lower.endsWith(".pdf")
+                || lower.endsWith(".jpg")
+                || lower.endsWith(".jpeg")
+                || lower.endsWith(".png")
+                || lower.endsWith(".gif")
+                || lower.endsWith(".bmp");
+    }
+
+    public record AttachmentResource(Resource resource, String filename, MediaType contentType) {
+    }
+}

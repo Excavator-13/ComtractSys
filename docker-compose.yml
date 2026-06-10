@@ -1,5 +1,6 @@
 services:
   mysql:
+    profiles: ["mysql"]
     image: mysql:8.4
     container_name: contractsys-mysql
     environment:
@@ -19,23 +20,61 @@ services:
       retries: 10
       start_period: 30s
 
+  postgres:
+    image: postgres:17-alpine
+    container_name: contractsys-postgres
+    environment:
+      POSTGRES_DB: contractsys
+      POSTGRES_USER: contractsys
+      POSTGRES_PASSWORD: contractsys
+      TZ: Asia/Shanghai
+    ports:
+      - "5432:5432"
+    volumes:
+      - contractsys-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  redis:
+    image: redis:8-alpine
+    container_name: contractsys-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - contractsys-redis-data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ./backend
     image: contractsys-backend:local
     container_name: contractsys-backend
     depends_on:
-      mysql:
+      postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     environment:
-      SPRING_PROFILES_ACTIVE: mysql
+      SPRING_PROFILES_ACTIVE: postgres,redis
       SPRING_JPA_HIBERNATE_DDL_AUTO: none
       SPRING_JPA_PROPERTIES_HIBERNATE_HBM2DDL_AUTO: none
-      MYSQL_URL: jdbc:mysql://mysql:3306/contractsys?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
-      MYSQL_USERNAME: contractsys
-      MYSQL_PASSWORD: contractsys
+      POSTGRES_URL: jdbc:postgresql://postgres:5432/contractsys
+      POSTGRES_USERNAME: contractsys
+      POSTGRES_PASSWORD: contractsys
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       CORS_ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
       ADMIN_DEFAULT_PASSWORD: 123456
+      DEMO_DATA_ENABLED: "false"
       SPRINGDOC_API_DOCS_ENABLED: "true"
       SPRINGDOC_SWAGGER_UI_ENABLED: "true"
       JWT_SECRET: replace-with-at-least-32-bytes-secret-for-local-compose
@@ -57,4 +96,6 @@ services:
 
 volumes:
   contractsys-mysql-data:
+  contractsys-postgres-data:
+  contractsys-redis-data:
   contractsys-uploads:

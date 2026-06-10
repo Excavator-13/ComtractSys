@@ -368,6 +368,12 @@ class BoundaryIntegrationTest {
         mockMvc.perform(get("/api/v1/attachments/" + attachmentId + "/download")
                         .header("Authorization", "Bearer " + unrelated.token()))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/attachments/" + attachmentId + "/download")
+                        .header("Authorization", "Bearer " + drafter.token()))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/attachments/" + attachmentId + "/preview")
+                        .header("Authorization", "Bearer " + drafter.token()))
+                .andExpect(status().isOk());
 
         String queryResponse = mockMvc.perform(get("/api/v1/contracts/query")
                         .header("Authorization", bearer())
@@ -382,6 +388,53 @@ class BoundaryIntegrationTest {
         if (!found) {
             throw new AssertionError("合同查询应能看到全量合同");
         }
+    }
+
+    @Test
+    void contractTemplatesTimelineVersionsAndExportAreAvailable() throws Exception {
+        Long customerId = createCustomer();
+        Long contractId = createContract(customerId);
+
+        mockMvc.perform(get("/api/v1/contract-templates")
+                        .header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].name").exists());
+
+        mockMvc.perform(get("/api/v1/contracts/" + contractId + "/timeline")
+                        .header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].toStatus").value("DRAFT"));
+
+        mockMvc.perform(get("/api/v1/contracts/" + contractId + "/versions")
+                        .header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].versionNo").value(1));
+
+        mockMvc.perform(put("/api/v1/contracts/" + contractId)
+                        .header("Authorization", bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(contractPayload(customerId, LocalDate.now(), LocalDate.now().plusDays(3))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/contracts/" + contractId + "/versions")
+                        .header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].versionNo").value(2))
+                .andExpect(jsonPath("$.data[0].remark").value("修改合同信息"));
+
+        mockMvc.perform(get("/api/v1/contracts/query")
+                        .header("Authorization", bearer())
+                        .param("customerId", customerId.toString())
+                        .param("beginFrom", LocalDate.now().minusDays(1).toString())
+                        .param("beginTo", LocalDate.now().plusDays(1).toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.records[0].id").exists());
+
+        mockMvc.perform(get("/api/v1/contracts/export")
+                        .header("Authorization", bearer())
+                        .param("customerId", customerId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("contracts_")));
     }
 
     @Test

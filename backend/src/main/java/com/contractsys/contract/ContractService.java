@@ -9,6 +9,8 @@ import com.contractsys.log.OperationLogService;
 import com.contractsys.user.SysUser;
 import com.contractsys.user.UserRepository;
 import com.contractsys.user.UserStatus;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,16 +27,26 @@ public class ContractService {
     private final ContractRepository contractRepository;
     private final ContractTaskRepository taskRepository;
     private final ContractStateHistoryRepository stateHistoryRepository;
+    private final ContractTemplateRepository templateRepository;
+    private final ContractVersionRepository versionRepository;
+    private final ContractNumberService numberService;
     private final CustomerRepository customerRepository;
     private final UserRepository userRepository;
     private final OperationLogService operationLogService;
 
     public ContractService(ContractRepository contractRepository, ContractTaskRepository taskRepository,
-                           ContractStateHistoryRepository stateHistoryRepository, CustomerRepository customerRepository,
-                           UserRepository userRepository, OperationLogService operationLogService) {
+                           ContractStateHistoryRepository stateHistoryRepository,
+                           ContractTemplateRepository templateRepository,
+                           ContractVersionRepository versionRepository,
+                           ContractNumberService numberService,
+                           CustomerRepository customerRepository, UserRepository userRepository,
+                           OperationLogService operationLogService) {
         this.contractRepository = contractRepository;
         this.taskRepository = taskRepository;
         this.stateHistoryRepository = stateHistoryRepository;
+        this.templateRepository = templateRepository;
+        this.versionRepository = versionRepository;
+        this.numberService = numberService;
         this.customerRepository = customerRepository;
         this.userRepository = userRepository;
         this.operationLogService = operationLogService;
@@ -52,10 +64,35 @@ public class ContractService {
         ).map(ContractView::from);
     }
 
+    public Page<ContractView> advancedList(String keyword, String statusStr, Long customerId, Long drafterId,
+                                           LocalDate beginFrom, LocalDate beginTo, LocalDate endFrom, LocalDate endTo,
+                                           int page, int size, SysUser user) {
+        ContractStatus status = parseStatus(statusStr);
+        return contractRepository.advancedSearchRelated(
+                keyword == null ? "" : keyword,
+                status, customerId, drafterId, beginFrom, beginTo, endFrom, endTo,
+                user.getId(),
+                hasPermission(user, "contract:assign"),
+                ContractStatus.DRAFT,
+                PageRequests.of(page, size)
+        ).map(ContractView::from);
+    }
+
     public Page<ContractView> query(String keyword, String statusStr, int page, int size) {
         ContractStatus status = parseStatus(statusStr);
         return contractRepository.search(
                 keyword == null ? "" : keyword, status,
+                PageRequests.of(page, size)
+        ).map(ContractView::from);
+    }
+
+    public Page<ContractView> advancedQuery(String keyword, String statusStr, Long customerId, Long drafterId,
+                                            LocalDate beginFrom, LocalDate beginTo, LocalDate endFrom, LocalDate endTo,
+                                            int page, int size) {
+        ContractStatus status = parseStatus(statusStr);
+        return contractRepository.advancedSearch(
+                keyword == null ? "" : keyword,
+                status, customerId, drafterId, beginFrom, beginTo, endFrom, endTo,
                 PageRequests.of(page, size)
         ).map(ContractView::from);
     }
@@ -78,6 +115,7 @@ public class ContractService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractView create(ContractCreateRequest request, SysUser operator) {
         if (request.endDate().isBefore(request.beginDate())) {
             throw ApiException.badRequest("结束日期不能早于开始日期");
@@ -86,20 +124,23 @@ public class ContractService {
                 .filter(c -> !c.isDeleted())
                 .orElseThrow(() -> ApiException.notFound("客户不存在"));
         Contract contract = new Contract();
-        contract.setContractNo("HT" + LocalDate.now().toString().replace("-", "") + System.currentTimeMillis() % 100000);
+        contract.setContractNo(numberService.temporaryNumber());
         contract.setName(request.name());
         contract.setCustomer(customer);
         contract.setBeginDate(request.beginDate());
         contract.setEndDate(request.endDate());
         contract.setContent(request.content());
         contract.setDrafter(operator);
-        Contract saved = contractRepository.save(contract);
+        Contract saved = contractRepository.saveAndFlush(contract);
+        saved.setContractNo(numberService.contractNo(saved.getId()));
+        recordVersion(saved, operator, "起草合同");
         recordState(saved, null, ContractStatus.DRAFT, operator, "起草合同");
         createAssignTasks(saved);
         return ContractView.from(saved);
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView assign(Long id, AssignRequest request, SysUser operator) {
         Contract contract = getContract(id);
         ensureMutableContract(contract);
@@ -123,6 +164,7 @@ public class ContractService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView countersign(Long id, OpinionRequest request, SysUser operator) {
         Contract contract = getContract(id);
         ensureMutableContract(contract);
@@ -136,6 +178,7 @@ public class ContractService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView finalizeContract(Long id, FinalizeRequest request, SysUser operator) {
         Contract contract = getContract(id);
         ensureMutableContract(contract);
@@ -145,11 +188,13 @@ public class ContractService {
         }
         finishTask(id, operator, TaskType.FINALIZE, TaskStatus.DONE, "起草人定稿");
         contract.setContent(request.content());
+        recordVersion(contract, operator, "起草人定稿");
         changeStatus(contract, ContractStatus.FINALIZED, operator, "起草人定稿");
         return detail(id, operator);
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView approve(Long id, ApproveRequest request, SysUser operator) {
         Contract contract = getContract(id);
         ensureMutableContract(contract);
@@ -165,6 +210,7 @@ public class ContractService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView sign(Long id, SignRequest request, SysUser operator) {
         Contract contract = getContract(id);
         ensureMutableContract(contract);
@@ -179,6 +225,7 @@ public class ContractService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractView update(Long id, ContractCreateRequest request, SysUser operator) {
         Contract contract = getContract(id);
         ensureMutableContract(contract);
@@ -197,11 +244,13 @@ public class ContractService {
             contract.setCustomer(customer);
         }
         contractRepository.save(contract);
+        recordVersion(contract, operator, "修改合同信息");
         recordState(contract, contract.getStatus(), contract.getStatus(), operator, "修改合同信息");
         return ContractView.from(contract);
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public void delete(Long id, SysUser operator) {
         Contract contract = getContract(id);
         if (contract.getStatus() != ContractStatus.DRAFT && contract.getStatus() != ContractStatus.CANCELLED) {
@@ -213,6 +262,7 @@ public class ContractService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public void cancel(Long id, SysUser operator) {
         Contract contract = getContract(id);
         if (contract.getStatus() == ContractStatus.SIGNED || contract.getStatus() == ContractStatus.CANCELLED) {
@@ -231,6 +281,7 @@ public class ContractService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView resubmit(Long id, SysUser operator) {
         Contract contract = getContract(id);
         ensureMutableContract(contract);
@@ -268,6 +319,28 @@ public class ContractService {
         return sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 
+    public byte[] exportContracts(String keyword, String statusStr, Long customerId, Long drafterId,
+                                  LocalDate beginFrom, LocalDate beginTo, LocalDate endFrom, LocalDate endTo,
+                                  SysUser user) {
+        Page<ContractView> result = hasPermission(user, "contract:query")
+                ? advancedQuery(keyword, statusStr, customerId, drafterId, beginFrom, beginTo, endFrom, endTo, 1, 10000)
+                : advancedList(keyword, statusStr, customerId, drafterId, beginFrom, beginTo, endFrom, endTo, 1, 10000, user);
+        StringBuilder sb = new StringBuilder();
+        sb.append("\uFEFF");
+        sb.append("合同编号,合同名称,客户,状态,起草人,开始日期,结束日期,签订日期\n");
+        for (ContractView c : result.getContent()) {
+            sb.append(escapeCsv(c.contractNo())).append(',');
+            sb.append(escapeCsv(c.name())).append(',');
+            sb.append(escapeCsv(c.customerName())).append(',');
+            sb.append(c.status()).append(',');
+            sb.append(escapeCsv(c.drafterName())).append(',');
+            sb.append(c.beginDate()).append(',');
+            sb.append(c.endDate()).append(',');
+            sb.append(c.signedDate() == null ? "" : c.signedDate()).append('\n');
+        }
+        return sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
     private String escapeCsv(String val) {
         if (val == null) return "";
         if (val.contains(",") || val.contains("\"") || val.contains("\n")) {
@@ -276,12 +349,18 @@ public class ContractService {
         return val;
     }
 
+    @Cacheable(cacheNames = "contractStats", key = "'global'")
     public Map<String, Object> getStatistics() {
-        long total = contractRepository.countByDeletedFalse();
-        long draft = contractRepository.countByDeletedFalseAndStatus(ContractStatus.DRAFT);
-        long assigned = contractRepository.countByDeletedFalseAndStatus(ContractStatus.ASSIGNED);
-        long signed = contractRepository.countByDeletedFalseAndStatus(ContractStatus.SIGNED);
-        long rejected = contractRepository.countByDeletedFalseAndStatus(ContractStatus.REJECTED);
+        Map<ContractStatus, Long> byStatus = contractRepository.countByStatus().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        row -> (ContractStatus) row[0],
+                        row -> ((Number) row[1]).longValue()
+                ));
+        long total = byStatus.values().stream().mapToLong(Long::longValue).sum();
+        long draft = byStatus.getOrDefault(ContractStatus.DRAFT, 0L);
+        long assigned = byStatus.getOrDefault(ContractStatus.ASSIGNED, 0L);
+        long signed = byStatus.getOrDefault(ContractStatus.SIGNED, 0L);
+        long rejected = byStatus.getOrDefault(ContractStatus.REJECTED, 0L);
         long pendingTasks = taskRepository.countByTaskStatus(TaskStatus.PENDING);
         return Map.of(
                 "total", total,
@@ -316,16 +395,38 @@ public class ContractService {
         );
     }
 
+    @Cacheable(cacheNames = "monthlyStats", key = "'all'")
     public List<Map<String, Object>> getMonthlyStatistics() {
-        return contractRepository.findAll().stream()
-                .filter(contract -> !contract.isDeleted())
-                .collect(java.util.stream.Collectors.groupingBy(
-                        contract -> contract.getCreatedAt().getYear() + "-" + String.format("%02d", contract.getCreatedAt().getMonthValue()),
-                        java.util.stream.Collectors.counting()
-                ))
-                .entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .map(entry -> Map.<String, Object>of("month", entry.getKey(), "count", entry.getValue()))
+        return contractRepository.countByCreatedMonth().stream()
+                .map(row -> {
+                    int year = ((Number) row[0]).intValue();
+                    int month = ((Number) row[1]).intValue();
+                    return Map.<String, Object>of(
+                            "month", year + "-" + String.format("%02d", month),
+                            "count", ((Number) row[2]).longValue()
+                    );
+                })
+                .toList();
+    }
+
+    @Cacheable(cacheNames = "contractTemplates", key = "'enabled'")
+    public List<ContractTemplateView> templates() {
+        return templateRepository.findByEnabledTrueOrderByCreatedAtAsc().stream()
+                .map(ContractTemplateView::from)
+                .toList();
+    }
+
+    public List<ContractVersionView> versions(Long id, SysUser user) {
+        ensureCanViewContract(id, user);
+        return versionRepository.findByContractIdOrderByVersionNoDesc(id).stream()
+                .map(ContractVersionView::from)
+                .toList();
+    }
+
+    public List<ContractTimelineView> timeline(Long id, SysUser user) {
+        ensureCanViewContract(id, user);
+        return stateHistoryRepository.findByContractIdOrderByCreatedAtAsc(id).stream()
+                .map(ContractTimelineView::from)
                 .toList();
     }
 
@@ -473,4 +574,16 @@ public class ContractService {
         operationLogService.record(operator, "CONTRACT", remark, "CONTRACT", contract.getId(),
                 contract.getContractNo() + " " + contract.getName() + " " + (from == null ? "-" : from) + " -> " + to);
     }
+
+    private void recordVersion(Contract contract, SysUser operator, String remark) {
+        ContractVersion version = new ContractVersion();
+        version.setContract(contract);
+        version.setVersionNo((int) versionRepository.countByContractId(contract.getId()) + 1);
+        version.setName(contract.getName());
+        version.setContent(contract.getContent());
+        version.setOperator(operator);
+        version.setRemark(remark);
+        versionRepository.save(version);
+    }
+
 }

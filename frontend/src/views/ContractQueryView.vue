@@ -1,15 +1,21 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Search, Eye, RefreshCcw } from 'lucide-vue-next'
+import { Search, Eye, RefreshCcw, Download } from 'lucide-vue-next'
 import { api } from '../api'
 
 const router = useRouter()
 const contracts = ref([])
+const customers = ref([])
 const loading = ref(false)
 const error = ref('')
 const keyword = ref('')
 const statusFilter = ref('')
+const customerId = ref('')
+const beginFrom = ref('')
+const beginTo = ref('')
+const endFrom = ref('')
+const endTo = ref('')
 const page = ref(1)
 const total = ref(0)
 const pageSize = 10
@@ -39,6 +45,11 @@ async function loadContracts() {
     const params = { page: page.value, size: pageSize }
     if (keyword.value) params.keyword = keyword.value
     if (statusFilter.value) params.status = statusFilter.value
+    if (customerId.value) params.customerId = customerId.value
+    if (beginFrom.value) params.beginFrom = beginFrom.value
+    if (beginTo.value) params.beginTo = beginTo.value
+    if (endFrom.value) params.endFrom = endFrom.value
+    if (endTo.value) params.endTo = endTo.value
     const res = await api.get('/contracts/query', { params })
     contracts.value = res.data.records
     total.value = res.data.total
@@ -47,6 +58,13 @@ async function loadContracts() {
   } finally {
     loading.value = false
   }
+}
+
+async function loadCustomers() {
+  try {
+    const res = await api.get('/customers', { params: { page: 1, size: 200 } })
+    customers.value = res.data.records
+  } catch {}
 }
 
 function search() {
@@ -59,7 +77,33 @@ function goPage(p) {
   loadContracts()
 }
 
-onMounted(loadContracts)
+async function exportContracts() {
+  error.value = ''
+  try {
+    const params = {}
+    if (keyword.value) params.keyword = keyword.value
+    if (statusFilter.value) params.status = statusFilter.value
+    if (customerId.value) params.customerId = customerId.value
+    if (beginFrom.value) params.beginFrom = beginFrom.value
+    if (beginTo.value) params.beginTo = beginTo.value
+    if (endFrom.value) params.endFrom = endFrom.value
+    if (endTo.value) params.endTo = endTo.value
+    const res = await api.get('/contracts/export', { params, responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `contracts_${new Date().toISOString().slice(0, 10)}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    error.value = err.message
+  }
+}
+
+onMounted(() => {
+  loadCustomers()
+  loadContracts()
+})
 </script>
 
 <template>
@@ -76,7 +120,16 @@ onMounted(loadContracts)
       <select v-model="statusFilter" @change="search" style="max-width:140px">
         <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
       </select>
+      <select v-model="customerId" @change="search" style="max-width:180px">
+        <option value="">全部客户</option>
+        <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }}</option>
+      </select>
+      <input v-model="beginFrom" type="date" title="开始日期起" style="max-width:150px" @change="search" />
+      <input v-model="beginTo" type="date" title="开始日期止" style="max-width:150px" @change="search" />
+      <input v-model="endFrom" type="date" title="结束日期起" style="max-width:150px" @change="search" />
+      <input v-model="endTo" type="date" title="结束日期止" style="max-width:150px" @change="search" />
       <button class="secondary" @click="search">查询</button>
+      <button class="secondary" @click="exportContracts"><Download :size="16" /> 导出</button>
       <button class="icon" @click="loadContracts"><RefreshCcw :size="16" /></button>
     </div>
 
