@@ -69,6 +69,31 @@ demo_manager / 123456
 demo_approver / 123456
 ```
 
+## 演示一键启动
+
+```powershell
+.\scripts\start-demo.ps1
+```
+
+脚本会使用 `functional-test` profile 启动后端和前端，并把日志、PID 写入 `output/demo-run`。默认访问地址：
+
+```text
+前端：http://localhost:5173
+后端：http://localhost:8080
+```
+
+如果端口被占用，可以指定备用端口：
+
+```powershell
+.\scripts\start-demo.ps1 -BackendPort 18080 -FrontendPort 15173
+```
+
+停止脚本：
+
+```powershell
+.\scripts\stop-demo.ps1
+```
+
 演示数据默认关闭。普通启动时系统会清理 `demo_` 用户和“演示”前缀业务数据；需要手动填充时可显式打开：
 
 ```powershell
