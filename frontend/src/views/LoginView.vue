@@ -1,10 +1,11 @@
 <script setup>
 import { reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { LockKeyhole, UserRound } from 'lucide-vue-next'
 import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const form = reactive({ username: 'admin', password: '123456' })
 const error = ref('')
@@ -15,7 +16,8 @@ async function login() {
   loading.value = true
   try {
     await auth.login(form)
-    router.push('/dashboard')
+    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/dashboard'
+    router.push(redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/dashboard')
   } catch (err) {
     error.value = err.message
   } finally {

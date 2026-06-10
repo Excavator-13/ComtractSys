@@ -3,13 +3,20 @@ package com.contractsys.contract;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import jakarta.persistence.LockModeType;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 public interface ContractRepository extends JpaRepository<Contract, Long> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT c FROM Contract c WHERE c.id = :id AND c.deleted=false")
+    Optional<Contract> findActiveByIdForUpdate(@Param("id") Long id);
+
     @Query("SELECT c FROM Contract c WHERE c.deleted=false " +
            "AND (c.name LIKE %:keyword% OR c.contractNo LIKE %:keyword% OR c.customer.name LIKE %:keyword%) " +
            "AND (:status IS NULL OR c.status = :status) ORDER BY c.createdAt DESC")

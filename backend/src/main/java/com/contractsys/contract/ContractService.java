@@ -142,7 +142,7 @@ public class ContractService {
     @Transactional
     @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView assign(Long id, AssignRequest request, SysUser operator) {
-        Contract contract = getContract(id);
+        Contract contract = getContractForUpdate(id);
         ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.DRAFT);
         finishTask(id, operator, TaskType.ASSIGN, TaskStatus.DONE, "已完成分配");
@@ -166,7 +166,7 @@ public class ContractService {
     @Transactional
     @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView countersign(Long id, OpinionRequest request, SysUser operator) {
-        Contract contract = getContract(id);
+        Contract contract = getContractForUpdate(id);
         ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.ASSIGNED);
         finishTask(id, operator, TaskType.COUNTERSIGN, TaskStatus.DONE, request.opinion());
@@ -180,7 +180,7 @@ public class ContractService {
     @Transactional
     @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView finalizeContract(Long id, FinalizeRequest request, SysUser operator) {
-        Contract contract = getContract(id);
+        Contract contract = getContractForUpdate(id);
         ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.COUNTERSIGNED, ContractStatus.REJECTED);
         if (!contract.getDrafter().getId().equals(operator.getId())) {
@@ -196,7 +196,7 @@ public class ContractService {
     @Transactional
     @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView approve(Long id, ApproveRequest request, SysUser operator) {
-        Contract contract = getContract(id);
+        Contract contract = getContractForUpdate(id);
         ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.FINALIZED);
         TaskStatus taskStatus = request.result() == ApproveResult.APPROVED ? TaskStatus.DONE : TaskStatus.REJECTED;
@@ -212,7 +212,7 @@ public class ContractService {
     @Transactional
     @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView sign(Long id, SignRequest request, SysUser operator) {
-        Contract contract = getContract(id);
+        Contract contract = getContractForUpdate(id);
         ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.APPROVED);
         finishTask(id, operator, TaskType.SIGN, TaskStatus.DONE, request.signInfo());
@@ -227,7 +227,7 @@ public class ContractService {
     @Transactional
     @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractView update(Long id, ContractCreateRequest request, SysUser operator) {
-        Contract contract = getContract(id);
+        Contract contract = getContractForUpdate(id);
         ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.DRAFT, ContractStatus.COUNTERSIGNED, ContractStatus.REJECTED);
         if (!contract.getDrafter().getId().equals(operator.getId())) {
@@ -252,10 +252,11 @@ public class ContractService {
     @Transactional
     @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public void delete(Long id, SysUser operator) {
-        Contract contract = getContract(id);
+        Contract contract = getContractForUpdate(id);
         if (contract.getStatus() != ContractStatus.DRAFT && contract.getStatus() != ContractStatus.CANCELLED) {
             throw ApiException.conflict("只能删除草稿或已取消的合同");
         }
+        completeRemainingPendingTasks(id, "合同已删除，待办已关闭");
         contract.setDeleted(true);
         contractRepository.save(contract);
         recordState(contract, contract.getStatus(), contract.getStatus(), operator, "删除合同");
@@ -264,7 +265,7 @@ public class ContractService {
     @Transactional
     @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public void cancel(Long id, SysUser operator) {
-        Contract contract = getContract(id);
+        Contract contract = getContractForUpdate(id);
         if (contract.getStatus() == ContractStatus.SIGNED || contract.getStatus() == ContractStatus.CANCELLED) {
             throw ApiException.conflict("当前合同状态不允许取消");
         }
@@ -283,7 +284,7 @@ public class ContractService {
     @Transactional
     @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView resubmit(Long id, SysUser operator) {
-        Contract contract = getContract(id);
+        Contract contract = getContractForUpdate(id);
         ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.REJECTED);
         List<ContractTask> approvalTasks = taskRepository.findByContractIdAndTaskType(contract.getId(), TaskType.APPROVAL);
@@ -432,6 +433,11 @@ public class ContractService {
 
     public Contract getContract(Long id) {
         return contractRepository.findById(id).filter(c -> !c.isDeleted())
+                .orElseThrow(() -> ApiException.notFound("合同不存在"));
+    }
+
+    private Contract getContractForUpdate(Long id) {
+        return contractRepository.findActiveByIdForUpdate(id)
                 .orElseThrow(() -> ApiException.notFound("合同不存在"));
     }
 

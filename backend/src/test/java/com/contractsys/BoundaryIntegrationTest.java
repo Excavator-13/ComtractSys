@@ -438,6 +438,26 @@ class BoundaryIntegrationTest {
     }
 
     @Test
+    void deletingDraftContractClosesPendingAssignTasks() throws Exception {
+        Long customerId = createCustomer();
+        Long contractId = createContract(customerId);
+
+        mockMvc.perform(delete("/api/v1/contracts/" + contractId)
+                        .header("Authorization", bearer()))
+                .andExpect(status().isOk());
+
+        String tasksResponse = mockMvc.perform(get("/api/v1/tasks/my")
+                        .header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        for (JsonNode task : objectMapper.readTree(tasksResponse).path("data")) {
+            if (task.path("contractId").asLong() == contractId && "PENDING".equals(task.path("taskStatus").asText())) {
+                throw new AssertionError("删除草稿后不应残留待处理分配任务");
+            }
+        }
+    }
+
+    @Test
     void assigningRolesRejectsMultipleRoles() throws Exception {
         UserLogin operator = createOperatorUser();
         Long operatorRoleId = findRoleId("ROLE_OPERATOR");

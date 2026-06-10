@@ -8,6 +8,8 @@ import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -81,13 +83,11 @@ public class ContractAttachmentService {
         Attachment attachment = attachmentRepository.findById(attachmentId)
                 .orElseThrow(() -> ApiException.notFound("附件不存在"));
         contractService.ensureCanModifyContract(attachment.getContract().getId(), user);
-        try {
-            Files.deleteIfExists(fileStorageService.resolve(attachment.getStoredName()));
-        } catch (IOException ignored) {
-        }
+        Path filePath = fileStorageService.resolve(attachment.getStoredName());
         attachmentRepository.delete(attachment);
         operationLogService.record(user, "CONTRACT", "删除附件", "ATTACHMENT", attachment.getId(),
                 attachment.getOriginalName());
+        deleteFileAfterCommit(filePath);
     }
 
     private Attachment save(Contract contract, MultipartFile file, SysUser user) {
@@ -128,6 +128,26 @@ public class ContractAttachmentService {
                 || lower.endsWith(".png")
                 || lower.endsWith(".gif")
                 || lower.endsWith(".bmp");
+    }
+
+    private void deleteFileAfterCommit(Path filePath) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            deletePhysicalFile(filePath);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                deletePhysicalFile(filePath);
+            }
+        });
+    }
+
+    private void deletePhysicalFile(Path filePath) {
+        try {
+            Files.deleteIfExists(filePath);
+        } catch (IOException ignored) {
+        }
     }
 
     public record AttachmentResource(Resource resource, String filename, MediaType contentType) {
