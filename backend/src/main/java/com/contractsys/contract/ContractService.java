@@ -33,6 +33,7 @@ public class ContractService {
     private final CustomerRepository customerRepository;
     private final UserRepository userRepository;
     private final OperationLogService operationLogService;
+    private final ContractAccessGuard accessGuard;
 
     public ContractService(ContractRepository contractRepository, ContractTaskRepository taskRepository,
                            ContractStateHistoryRepository stateHistoryRepository,
@@ -40,7 +41,8 @@ public class ContractService {
                            ContractVersionRepository versionRepository,
                            ContractNumberService numberService,
                            CustomerRepository customerRepository, UserRepository userRepository,
-                           OperationLogService operationLogService) {
+                           OperationLogService operationLogService,
+                           ContractAccessGuard accessGuard) {
         this.contractRepository = contractRepository;
         this.taskRepository = taskRepository;
         this.stateHistoryRepository = stateHistoryRepository;
@@ -50,6 +52,7 @@ public class ContractService {
         this.customerRepository = customerRepository;
         this.userRepository = userRepository;
         this.operationLogService = operationLogService;
+        this.accessGuard = accessGuard;
     }
 
     public Page<ContractView> list(String keyword, String statusStr, int page, int size, SysUser user) {
@@ -58,7 +61,7 @@ public class ContractService {
                 keyword == null ? "" : keyword,
                 status,
                 user.getId(),
-                hasPermission(user, "contract:assign"),
+                accessGuard.hasPermission(user, "contract:assign"),
                 ContractStatus.DRAFT,
                 PageRequests.of(page, size)
         ).map(ContractView::from);
@@ -72,7 +75,7 @@ public class ContractService {
                 keyword == null ? "" : keyword,
                 status, customerId, drafterId, beginFrom, beginTo, endFrom, endTo,
                 user.getId(),
-                hasPermission(user, "contract:assign"),
+                accessGuard.hasPermission(user, "contract:assign"),
                 ContractStatus.DRAFT,
                 PageRequests.of(page, size)
         ).map(ContractView::from);
@@ -98,15 +101,15 @@ public class ContractService {
     }
 
     public ContractDetailView detail(Long id, SysUser user) {
-        Contract contract = getContract(id);
-        ensureCanViewContract(contract, user);
+        Contract contract = accessGuard.getContract(id);
+        accessGuard.ensureCanViewContract(contract, user);
         List<TaskView> tasks = taskRepository.findByContractIdOrderByCreatedAtAsc(id).stream().map(TaskView::from).toList();
         return new ContractDetailView(ContractView.from(contract), tasks);
     }
 
     public Map<String, Object> process(Long id, SysUser user) {
-        Contract contract = getContract(id);
-        ensureCanViewContract(contract, user);
+        Contract contract = accessGuard.getContract(id);
+        accessGuard.ensureCanViewContract(contract, user);
         return Map.of(
                 "contract", ContractView.from(contract),
                 "tasks", taskRepository.findByContractIdOrderByCreatedAtAsc(id).stream().map(TaskView::from).toList(),
@@ -142,8 +145,8 @@ public class ContractService {
     @Transactional
     @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView assign(Long id, AssignRequest request, SysUser operator) {
-        Contract contract = getContractForUpdate(id);
-        ensureMutableContract(contract);
+        Contract contract = accessGuard.getContractForUpdate(id);
+        accessGuard.ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.DRAFT);
         finishTask(id, operator, TaskType.ASSIGN, TaskStatus.DONE, "已完成分配");
         completeRemainingPendingTasks(id, TaskType.ASSIGN, "其他分配待办已关闭");
@@ -166,8 +169,8 @@ public class ContractService {
     @Transactional
     @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView countersign(Long id, OpinionRequest request, SysUser operator) {
-        Contract contract = getContractForUpdate(id);
-        ensureMutableContract(contract);
+        Contract contract = accessGuard.getContractForUpdate(id);
+        accessGuard.ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.ASSIGNED);
         finishTask(id, operator, TaskType.COUNTERSIGN, TaskStatus.DONE, request.opinion());
         if (!taskRepository.existsByContractIdAndTaskTypeAndTaskStatus(id, TaskType.COUNTERSIGN, TaskStatus.PENDING)) {
@@ -180,8 +183,8 @@ public class ContractService {
     @Transactional
     @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView finalizeContract(Long id, FinalizeRequest request, SysUser operator) {
-        Contract contract = getContractForUpdate(id);
-        ensureMutableContract(contract);
+        Contract contract = accessGuard.getContractForUpdate(id);
+        accessGuard.ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.COUNTERSIGNED, ContractStatus.REJECTED);
         if (!contract.getDrafter().getId().equals(operator.getId())) {
             throw ApiException.forbidden("只有起草人可以定稿");
@@ -196,8 +199,8 @@ public class ContractService {
     @Transactional
     @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView approve(Long id, ApproveRequest request, SysUser operator) {
-        Contract contract = getContractForUpdate(id);
-        ensureMutableContract(contract);
+        Contract contract = accessGuard.getContractForUpdate(id);
+        accessGuard.ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.FINALIZED);
         TaskStatus taskStatus = request.result() == ApproveResult.APPROVED ? TaskStatus.DONE : TaskStatus.REJECTED;
         finishTask(id, operator, TaskType.APPROVAL, taskStatus, request.opinion());
@@ -212,8 +215,8 @@ public class ContractService {
     @Transactional
     @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView sign(Long id, SignRequest request, SysUser operator) {
-        Contract contract = getContractForUpdate(id);
-        ensureMutableContract(contract);
+        Contract contract = accessGuard.getContractForUpdate(id);
+        accessGuard.ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.APPROVED);
         finishTask(id, operator, TaskType.SIGN, TaskStatus.DONE, request.signInfo());
         contract.setSignedDate(request.signedDate());
@@ -227,8 +230,8 @@ public class ContractService {
     @Transactional
     @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractView update(Long id, ContractCreateRequest request, SysUser operator) {
-        Contract contract = getContractForUpdate(id);
-        ensureMutableContract(contract);
+        Contract contract = accessGuard.getContractForUpdate(id);
+        accessGuard.ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.DRAFT, ContractStatus.COUNTERSIGNED, ContractStatus.REJECTED);
         if (!contract.getDrafter().getId().equals(operator.getId())) {
             throw ApiException.forbidden("只有起草人可以修改合同");
@@ -252,7 +255,7 @@ public class ContractService {
     @Transactional
     @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public void delete(Long id, SysUser operator) {
-        Contract contract = getContractForUpdate(id);
+        Contract contract = accessGuard.getContractForUpdate(id);
         if (contract.getStatus() != ContractStatus.DRAFT && contract.getStatus() != ContractStatus.CANCELLED) {
             throw ApiException.conflict("只能删除草稿或已取消的合同");
         }
@@ -265,7 +268,7 @@ public class ContractService {
     @Transactional
     @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public void cancel(Long id, SysUser operator) {
-        Contract contract = getContractForUpdate(id);
+        Contract contract = accessGuard.getContractForUpdate(id);
         if (contract.getStatus() == ContractStatus.SIGNED || contract.getStatus() == ContractStatus.CANCELLED) {
             throw ApiException.conflict("当前合同状态不允许取消");
         }
@@ -284,8 +287,8 @@ public class ContractService {
     @Transactional
     @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView resubmit(Long id, SysUser operator) {
-        Contract contract = getContractForUpdate(id);
-        ensureMutableContract(contract);
+        Contract contract = accessGuard.getContractForUpdate(id);
+        accessGuard.ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.REJECTED);
         List<ContractTask> approvalTasks = taskRepository.findByContractIdAndTaskType(contract.getId(), TaskType.APPROVAL);
         for (ContractTask task : approvalTasks) {
@@ -323,7 +326,7 @@ public class ContractService {
     public byte[] exportContracts(String keyword, String statusStr, Long customerId, Long drafterId,
                                   LocalDate beginFrom, LocalDate beginTo, LocalDate endFrom, LocalDate endTo,
                                   SysUser user) {
-        Page<ContractView> result = hasPermission(user, "contract:query")
+        Page<ContractView> result = accessGuard.hasPermission(user, "contract:query")
                 ? advancedQuery(keyword, statusStr, customerId, drafterId, beginFrom, beginTo, endFrom, endTo, 1, 10000)
                 : advancedList(keyword, statusStr, customerId, drafterId, beginFrom, beginTo, endFrom, endTo, 1, 10000, user);
         StringBuilder sb = new StringBuilder();
@@ -374,7 +377,7 @@ public class ContractService {
     }
 
     public Map<String, Object> getStatistics(SysUser user) {
-        if (hasPermission(user, "contract:query")) {
+        if (accessGuard.hasPermission(user, "contract:query")) {
             return getStatistics();
         }
         List<ContractView> related = list("", "", 1, 10000, user).getContent();
@@ -418,50 +421,17 @@ public class ContractService {
     }
 
     public List<ContractVersionView> versions(Long id, SysUser user) {
-        ensureCanViewContract(id, user);
+        accessGuard.ensureCanViewContract(id, user);
         return versionRepository.findByContractIdOrderByVersionNoDesc(id).stream()
                 .map(ContractVersionView::from)
                 .toList();
     }
 
     public List<ContractTimelineView> timeline(Long id, SysUser user) {
-        ensureCanViewContract(id, user);
+        accessGuard.ensureCanViewContract(id, user);
         return stateHistoryRepository.findByContractIdOrderByCreatedAtAsc(id).stream()
                 .map(ContractTimelineView::from)
                 .toList();
-    }
-
-    public Contract getContract(Long id) {
-        return contractRepository.findById(id).filter(c -> !c.isDeleted())
-                .orElseThrow(() -> ApiException.notFound("合同不存在"));
-    }
-
-    private Contract getContractForUpdate(Long id) {
-        return contractRepository.findActiveByIdForUpdate(id)
-                .orElseThrow(() -> ApiException.notFound("合同不存在"));
-    }
-
-    public void ensureCanViewContract(Long contractId, SysUser user) {
-        ensureCanViewContract(getContract(contractId), user);
-    }
-
-    public void ensureCanModifyContract(Long contractId, SysUser user) {
-        Contract contract = getContract(contractId);
-        ensureCanViewContract(contract, user);
-        ensureMutableContract(contract);
-    }
-
-    public boolean canViewContract(Contract contract, SysUser user) {
-        return hasPermission(user, "contract:query")
-                || contract.getDrafter().getId().equals(user.getId())
-                || taskRepository.existsByContractIdAndAssigneeId(contract.getId(), user.getId())
-                || (contract.getStatus() == ContractStatus.DRAFT && hasPermission(user, "contract:assign"));
-    }
-
-    public boolean hasPermission(SysUser user, String permissionCode) {
-        return user.getRoles().stream()
-                .flatMap(role -> role.getPermissions().stream())
-                .anyMatch(permission -> permissionCode.equals(permission.getPermissionCode()));
     }
 
     private ContractStatus parseStatus(String statusStr) {
@@ -472,12 +442,6 @@ public class ContractService {
             return ContractStatus.valueOf(statusStr);
         } catch (IllegalArgumentException ex) {
             throw ApiException.badRequest("合同状态不合法: " + statusStr);
-        }
-    }
-
-    private void ensureCanViewContract(Contract contract, SysUser user) {
-        if (!canViewContract(contract, user)) {
-            throw ApiException.forbidden("当前用户无权查看该合同");
         }
     }
 
@@ -507,10 +471,7 @@ public class ContractService {
         if (assignee.getStatus() != UserStatus.ENABLED) {
             throw ApiException.conflict("用户已禁用，不能分配流程任务: " + assignee.getUsername());
         }
-        boolean hasPermission = assignee.getRoles().stream()
-                .flatMap(role -> role.getPermissions().stream())
-                .anyMatch(permission -> requiredPermission.equals(permission.getPermissionCode()));
-        if (!hasPermission) {
+        if (!assignee.hasPermission(requiredPermission)) {
             throw ApiException.conflict("用户缺少流程权限 " + requiredPermission + ": " + assignee.getUsername());
         }
         ContractTask task = new ContractTask();
@@ -546,12 +507,6 @@ public class ContractService {
             task.setOperatedAt(LocalDateTime.now());
         }
         taskRepository.saveAll(tasks);
-    }
-
-    private void ensureMutableContract(Contract contract) {
-        if (contract.getStatus() == ContractStatus.CANCELLED) {
-            throw ApiException.conflict("已取消合同不能继续操作");
-        }
     }
 
     private void requireStatus(Contract contract, ContractStatus... statuses) {

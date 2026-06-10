@@ -63,9 +63,13 @@ public class SysUser {
     public void setStatus(UserStatus status) { this.status = status; }
     public Set<SysRole> getRoles() { return roles; }
     public void setRoles(Set<SysRole> roles) { this.roles = roles; }
+    public boolean hasPermission(String permissionCode) {
+        return roles.stream()
+                .flatMap(role -> role.getPermissions().stream())
+                .anyMatch(permission -> permissionCode.equals(permission.getPermissionCode()));
+    }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public boolean isDeleted() { return deleted; }
     public void setDeleted(boolean deleted) { this.deleted = deleted; }
 }
-

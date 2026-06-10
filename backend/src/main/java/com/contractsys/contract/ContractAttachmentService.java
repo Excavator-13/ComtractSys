@@ -20,16 +20,16 @@ import java.util.List;
 
 @Service
 public class ContractAttachmentService {
-    private final ContractService contractService;
+    private final ContractAccessGuard accessGuard;
     private final FileStorageService fileStorageService;
     private final AttachmentRepository attachmentRepository;
     private final OperationLogService operationLogService;
 
-    public ContractAttachmentService(ContractService contractService,
+    public ContractAttachmentService(ContractAccessGuard accessGuard,
                                      FileStorageService fileStorageService,
                                      AttachmentRepository attachmentRepository,
                                      OperationLogService operationLogService) {
-        this.contractService = contractService;
+        this.accessGuard = accessGuard;
         this.fileStorageService = fileStorageService;
         this.attachmentRepository = attachmentRepository;
         this.operationLogService = operationLogService;
@@ -37,8 +37,8 @@ public class ContractAttachmentService {
 
     @Transactional
     public AttachmentView upload(Long contractId, MultipartFile file, SysUser user) {
-        Contract contract = contractService.getContract(contractId);
-        contractService.ensureCanModifyContract(contractId, user);
+        Contract contract = accessGuard.getContract(contractId);
+        accessGuard.ensureCanModifyContract(contract, user);
         Attachment attachment = save(contract, file, user);
         return AttachmentView.from(attachment);
     }
@@ -48,15 +48,15 @@ public class ContractAttachmentService {
         if (files == null) {
             return;
         }
-        Contract contract = contractService.getContract(contractId);
-        contractService.ensureCanModifyContract(contractId, user);
+        Contract contract = accessGuard.getContract(contractId);
+        accessGuard.ensureCanModifyContract(contract, user);
         files.stream()
                 .filter(file -> file != null && !file.isEmpty())
                 .forEach(file -> save(contract, file, user));
     }
 
     public List<AttachmentView> list(Long contractId, SysUser user) {
-        contractService.ensureCanViewContract(contractId, user);
+        accessGuard.ensureCanViewContract(contractId, user);
         return attachmentRepository.findByContractIdOrderByUploadedAtDesc(contractId).stream()
                 .map(AttachmentView::from)
                 .toList();
@@ -82,7 +82,7 @@ public class ContractAttachmentService {
     public void delete(Long attachmentId, SysUser user) {
         Attachment attachment = attachmentRepository.findById(attachmentId)
                 .orElseThrow(() -> ApiException.notFound("附件不存在"));
-        contractService.ensureCanModifyContract(attachment.getContract().getId(), user);
+        accessGuard.ensureCanModifyContract(attachment.getContract(), user);
         Path filePath = fileStorageService.resolve(attachment.getStoredName());
         attachmentRepository.delete(attachment);
         operationLogService.record(user, "CONTRACT", "删除附件", "ATTACHMENT", attachment.getId(),
@@ -108,7 +108,7 @@ public class ContractAttachmentService {
     private Attachment getAttachmentForView(Long attachmentId, SysUser user) {
         Attachment attachment = attachmentRepository.findById(attachmentId)
                 .orElseThrow(() -> ApiException.notFound("附件不存在"));
-        contractService.ensureCanViewContract(attachment.getContract().getId(), user);
+        accessGuard.ensureCanViewContract(attachment.getContract(), user);
         return attachment;
     }
 
