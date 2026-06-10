@@ -1,6 +1,6 @@
 package com.contractsys.user;
 
-import com.contractsys.auth.AuthService;
+import com.contractsys.auth.CurrentUser;
 import com.contractsys.auth.RequirePermission;
 import com.contractsys.auth.dto.UserView;
 import com.contractsys.common.ApiResponse;
@@ -19,66 +19,61 @@ import java.util.List;
 @RequirePermission("user:manage")
 public class UserController {
     private final UserService userService;
-    private final AuthService authService;
 
-    public UserController(UserService userService, AuthService authService) {
+    public UserController(UserService userService) {
         this.userService = userService;
-        this.authService = authService;
     }
 
     @GetMapping
     public ApiResponse<PageResponse<UserView>> list(@RequestParam(defaultValue = "") String keyword,
                                                      @RequestParam(defaultValue = "1") int page,
-                                                     @RequestParam(defaultValue = "10") int size) {
-        authService.requireUser();
+                                                     @RequestParam(defaultValue = "10") int size,
+                                                     @CurrentUser SysUser user) {
         return ApiResponse.ok(PageResponse.from(userService.list(keyword, page, size)));
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<UserView> get(@PathVariable Long id) {
-        authService.requireUser();
+    public ApiResponse<UserView> get(@PathVariable Long id, @CurrentUser SysUser user) {
         return ApiResponse.ok(userService.get(id));
     }
 
     @GetMapping("/assignable")
     @RequirePermission({"user:manage", "contract:assign"})
-    public ApiResponse<List<UserView>> assignableUsers() {
-        authService.requireUser();
+    public ApiResponse<List<UserView>> assignableUsers(@CurrentUser SysUser user) {
         return ApiResponse.ok(userService.assignableUsers());
     }
 
     @PostMapping
-    public ApiResponse<UserView> create(@Valid @RequestBody UserCreateRequest request) {
-        SysUser operator = authService.requireUser();
+    public ApiResponse<UserView> create(@Valid @RequestBody UserCreateRequest request,
+                                        @CurrentUser SysUser operator) {
         return ApiResponse.ok("创建成功", userService.create(request, operator));
     }
 
     @PutMapping("/{id}")
     public ApiResponse<UserView> update(@PathVariable Long id,
-                                         @Valid @RequestBody UserUpdateRequest request) {
-        SysUser operator = authService.requireUser();
+                                         @Valid @RequestBody UserUpdateRequest request,
+                                         @CurrentUser SysUser operator) {
         return ApiResponse.ok("更新成功", userService.update(id, request, operator));
     }
 
     @PatchMapping("/{id}/status")
     public ApiResponse<Void> toggleStatus(@PathVariable Long id,
-                                           @Valid @RequestBody UserStatusRequest request) {
-        SysUser operator = authService.requireUser();
+                                           @Valid @RequestBody UserStatusRequest request,
+                                           @CurrentUser SysUser operator) {
         userService.toggleStatus(id, request, operator);
         return ApiResponse.ok(null);
     }
 
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(@PathVariable Long id) {
-        SysUser operator = authService.requireUser();
+    public ApiResponse<Void> delete(@PathVariable Long id, @CurrentUser SysUser operator) {
         userService.delete(id, operator);
         return ApiResponse.ok(null);
     }
 
     @PutMapping("/{id}/roles")
     public ApiResponse<UserView> assignRoles(@PathVariable Long id,
-                                              @Valid @RequestBody AssignRolesRequest request) {
-        SysUser operator = authService.requireUser();
+                                              @Valid @RequestBody AssignRolesRequest request,
+                                              @CurrentUser SysUser operator) {
         return ApiResponse.ok("角色分配成功", userService.assignRoles(id, request, operator));
     }
 }

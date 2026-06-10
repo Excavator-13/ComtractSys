@@ -1,9 +1,10 @@
 package com.contractsys.log;
 
-import com.contractsys.auth.AuthService;
+import com.contractsys.auth.CurrentUser;
 import com.contractsys.auth.RequirePermission;
 import com.contractsys.common.ApiResponse;
 import com.contractsys.common.PageResponse;
+import com.contractsys.user.SysUser;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -22,26 +23,24 @@ import java.nio.charset.StandardCharsets;
 @RequirePermission("log:view")
 public class OperationLogController {
     private final OperationLogService operationLogService;
-    private final AuthService authService;
 
-    public OperationLogController(OperationLogService operationLogService, AuthService authService) {
+    public OperationLogController(OperationLogService operationLogService) {
         this.operationLogService = operationLogService;
-        this.authService = authService;
     }
 
     @GetMapping
     public ApiResponse<PageResponse<OperationLog>> logs(@RequestParam(defaultValue = "") String keyword,
                                                         @RequestParam(defaultValue = "") String module,
                                                         @RequestParam(defaultValue = "1") int page,
-                                                        @RequestParam(defaultValue = "10") int size) {
-        authService.requireUser();
+                                                        @RequestParam(defaultValue = "10") int size,
+                                                        @CurrentUser SysUser user) {
         return ApiResponse.ok(PageResponse.from(operationLogService.list(keyword, module, page, size)));
     }
 
     @GetMapping("/export")
     public ResponseEntity<Resource> exportLogs(@RequestParam(defaultValue = "") String keyword,
-                                               @RequestParam(defaultValue = "") String module) {
-        authService.requireUser();
+                                               @RequestParam(defaultValue = "") String module,
+                                               @CurrentUser SysUser user) {
         byte[] csv = operationLogService.export(keyword, module);
         Resource resource = new ByteArrayResource(csv);
         String filename = "logs_" + java.time.LocalDate.now() + ".csv";

@@ -5,6 +5,7 @@ import com.contractsys.auth.dto.LoginResponse;
 import com.contractsys.auth.dto.RegisterRequest;
 import com.contractsys.auth.dto.UserView;
 import com.contractsys.common.ApiResponse;
+import com.contractsys.user.SysUser;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,8 +29,8 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    public ApiResponse<UserView> me() {
-        return ApiResponse.ok(authService.currentUser());
+    public ApiResponse<UserView> me(@CurrentUser SysUser user) {
+        return ApiResponse.ok(UserView.from(user));
     }
 
     @PostMapping("/logout")
@@ -38,4 +39,3 @@ public class AuthController {
         return ApiResponse.ok(null);
     }
 }
-

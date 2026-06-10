@@ -58,7 +58,13 @@ public class AuthService {
 
     public SysUser requireUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || !(auth.getPrincipal() instanceof Long userId)) {
+        if (auth == null || !auth.isAuthenticated()) {
+            throw ApiException.unauthorized("请先登录");
+        }
+        if (auth.getPrincipal() instanceof SysUser user) {
+            return user;
+        }
+        if (!(auth.getPrincipal() instanceof Long userId)) {
             throw ApiException.unauthorized("请先登录");
         }
         SysUser user = userRepository.findById(userId)

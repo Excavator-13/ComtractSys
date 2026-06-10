@@ -3,7 +3,10 @@ package com.contractsys.customer;
 import com.contractsys.common.ApiException;
 import com.contractsys.common.BusinessNumberService;
 import com.contractsys.common.PageRequests;
+import com.contractsys.common.event.OperationLogEvent;
 import com.contractsys.customer.dto.CustomerRequest;
+import com.contractsys.user.SysUser;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,13 +18,16 @@ public class CustomerService {
     private final CustomerRepository customerRepository;
     private final List<CustomerReferenceChecker> referenceCheckers;
     private final BusinessNumberService numberService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public CustomerService(CustomerRepository customerRepository,
                            List<CustomerReferenceChecker> referenceCheckers,
-                           BusinessNumberService numberService) {
+                           BusinessNumberService numberService,
+                           ApplicationEventPublisher eventPublisher) {
         this.customerRepository = customerRepository;
         this.referenceCheckers = referenceCheckers;
         this.numberService = numberService;
+        this.eventPublisher = eventPublisher;
     }
 
     public Page<Customer> list(String keyword, int page, int size) {
@@ -32,25 +38,27 @@ public class CustomerService {
     }
 
     @Transactional
-    public Customer create(CustomerRequest request) {
+    public Customer create(CustomerRequest request, SysUser operator) {
         Customer customer = new Customer();
         customer.setCustomerNo(numberService.temporaryNumber());
         fill(customer, request);
         Customer saved = customerRepository.saveAndFlush(customer);
         saved.setCustomerNo(numberService.customerNo(saved.getId()));
+        eventPublisher.publishEvent(new OperationLogEvent(operator, "CUSTOMER", "新增客户", "CUSTOMER", saved.getId(), saved.getName()));
         return saved;
     }
 
     @Transactional
-    public Customer update(Long id, CustomerRequest request) {
+    public Customer update(Long id, CustomerRequest request, SysUser operator) {
         Customer customer = customerRepository.findById(id).filter(c -> !c.isDeleted())
                 .orElseThrow(() -> ApiException.notFound("客户不存在"));
         fill(customer, request);
+        eventPublisher.publishEvent(new OperationLogEvent(operator, "CUSTOMER", "修改客户", "CUSTOMER", customer.getId(), customer.getName()));
         return customer;
     }
 
     @Transactional
-    public void delete(Long id) {
+    public void delete(Long id, SysUser operator) {
         Customer customer = customerRepository.findById(id).filter(c -> !c.isDeleted())
                 .orElseThrow(() -> ApiException.notFound("客户不存在"));
         for (CustomerReferenceChecker checker : referenceCheckers) {
@@ -59,6 +67,7 @@ public class CustomerService {
             }
         }
         customer.setDeleted(true);
+        eventPublisher.publishEvent(new OperationLogEvent(operator, "CUSTOMER", "删除客户", "CUSTOMER", id, "删除客户"));
     }
 
     private void fill(Customer customer, CustomerRequest request) {
