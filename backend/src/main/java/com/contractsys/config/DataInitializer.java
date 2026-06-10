@@ -45,9 +45,9 @@ public class DataInitializer implements CommandLineRunner {
                 .toList());
         seedRole("ROLE_NEW_USER", "新用户", "注册后的默认角色", List.of());
 
-        if (!userRepository.existsByUsernameAndDeletedFalse("admin")) {
+        if (!userRepository.existsByUsernameAndDeletedFalse(SysUser.BUILT_IN_ADMIN_USERNAME)) {
             SysUser user = new SysUser();
-            user.setUsername("admin");
+            user.setUsername(SysUser.BUILT_IN_ADMIN_USERNAME);
             user.setDisplayName("管理员");
             user.setPasswordHash(passwordEncoder.encode(adminDefaultPassword));
             user.getRoles().add(admin);

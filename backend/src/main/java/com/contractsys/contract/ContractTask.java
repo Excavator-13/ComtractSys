@@ -25,7 +25,7 @@ public class ContractTask {
     @ManyToOne(optional = false)
     private SysUser assignee;
 
-    @Lob
+    @Column(columnDefinition = "TEXT")
     private String opinion;
 
     private LocalDateTime operatedAt;
@@ -47,4 +47,3 @@ public class ContractTask {
     public void setOperatedAt(LocalDateTime operatedAt) { this.operatedAt = operatedAt; }
     public LocalDateTime getCreatedAt() { return createdAt; }
 }
-

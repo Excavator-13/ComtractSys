@@ -73,6 +73,7 @@ public class ContractService {
         recordVersion(saved, operator, "起草合同");
         recordState(saved, null, ContractStatus.DRAFT, operator, "起草合同");
         createAssignTasks(saved);
+        eventPublisher.publishEvent(new ContractChangedEvent(saved.getId()));
         return ContractView.from(saved);
     }
 
@@ -154,6 +155,9 @@ public class ContractService {
 
     @Transactional
     public ContractView update(Long id, ContractCreateRequest request, SysUser operator) {
+        if (request.endDate().isBefore(request.beginDate())) {
+            throw ApiException.badRequest("结束日期不能早于开始日期");
+        }
         Contract contract = accessGuard.getContractForUpdate(id);
         accessGuard.ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.DRAFT, ContractStatus.COUNTERSIGNED, ContractStatus.REJECTED);
@@ -186,6 +190,7 @@ public class ContractService {
         contract.setDeleted(true);
         contractRepository.save(contract);
         recordState(contract, contract.getStatus(), contract.getStatus(), operator, "删除合同");
+        eventPublisher.publishEvent(new ContractChangedEvent(contract.getId()));
     }
 
     @Transactional

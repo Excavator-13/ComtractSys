@@ -11,6 +11,7 @@ import com.contractsys.contract.dto.TaskView;
 import com.contractsys.user.SysUser;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -85,6 +86,30 @@ public class ContractQueryService {
         ).map(ContractView::from);
     }
 
+    public Page<ContractView> exportAdvancedQuery(String keyword, String statusStr, Long customerId, Long drafterId,
+                                                  LocalDate beginFrom, LocalDate beginTo, LocalDate endFrom, LocalDate endTo) {
+        ContractStatus status = parseStatus(statusStr);
+        return contractRepository.advancedSearch(
+                keyword == null ? "" : keyword,
+                status, customerId, drafterId, beginFrom, beginTo, endFrom, endTo,
+                PageRequest.of(0, 10000)
+        ).map(ContractView::from);
+    }
+
+    public Page<ContractView> exportAdvancedList(String keyword, String statusStr, Long customerId, Long drafterId,
+                                                 LocalDate beginFrom, LocalDate beginTo, LocalDate endFrom, LocalDate endTo,
+                                                 SysUser user) {
+        ContractStatus status = parseStatus(statusStr);
+        return contractRepository.advancedSearchRelated(
+                keyword == null ? "" : keyword,
+                status, customerId, drafterId, beginFrom, beginTo, endFrom, endTo,
+                user.getId(),
+                accessGuard.hasPermission(user, "contract:assign"),
+                ContractStatus.DRAFT,
+                PageRequest.of(0, 10000)
+        ).map(ContractView::from);
+    }
+
     public ContractDetailView detail(Long id, SysUser user) {
         Contract contract = accessGuard.getContract(id);
         accessGuard.ensureCanViewContract(contract, user);
@@ -104,14 +129,6 @@ public class ContractQueryService {
 
     public List<TaskView> myTasks(SysUser user) {
         return taskRepository.findByAssigneeAndTaskStatus(user, TaskStatus.PENDING).stream().map(TaskView::from).toList();
-    }
-
-    public Page<ContractStateHistory> logs(String keyword, int page, int size) {
-        var pr = PageRequests.of(page, size);
-        if (keyword == null || keyword.isEmpty()) {
-            return contractRepository.findHistory(pr);
-        }
-        return contractRepository.findHistoryByKeyword(keyword, pr);
     }
 
     @Cacheable(cacheNames = "contractTemplates", key = "'enabled'")

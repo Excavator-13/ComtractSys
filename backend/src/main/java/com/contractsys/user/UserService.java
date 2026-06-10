@@ -101,7 +101,7 @@ public class UserService {
     @Transactional
     public void toggleStatus(Long id, UserStatusRequest request, SysUser operator) {
         SysUser user = findActiveUser(id);
-        if ("admin".equals(user.getUsername()) && request.status() == UserStatus.DISABLED) {
+        if (user.isBuiltInAdmin() && request.status() == UserStatus.DISABLED) {
             throw ApiException.conflict("内置管理员不能禁用");
         }
         user.setStatus(request.status());
@@ -113,7 +113,7 @@ public class UserService {
     @Transactional
     public void delete(Long id, SysUser operator) {
         SysUser user = findActiveUser(id);
-        if ("admin".equals(user.getUsername())) {
+        if (user.isBuiltInAdmin()) {
             throw ApiException.conflict("内置管理员不能删除");
         }
         user.setDeleted(true);
@@ -125,7 +125,7 @@ public class UserService {
     public UserView assignRoles(Long id, AssignRolesRequest request, SysUser operator) {
         SysUser user = findActiveUser(id);
         List<Long> requestedRoleIds = request.effectiveRoleIds();
-        if ("admin".equals(user.getUsername()) && (requestedRoleIds == null || requestedRoleIds.isEmpty())) {
+        if (user.isBuiltInAdmin() && (requestedRoleIds == null || requestedRoleIds.isEmpty())) {
             throw ApiException.conflict("内置管理员至少需要保留一个角色");
         }
         if (requestedRoleIds != null && requestedRoleIds.size() > 1) {

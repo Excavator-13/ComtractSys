@@ -9,6 +9,8 @@ import java.util.Set;
 @Entity
 @Table(name = "sys_user")
 public class SysUser {
+    public static final String BUILT_IN_ADMIN_USERNAME = "admin";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -67,6 +69,9 @@ public class SysUser {
         return roles.stream()
                 .flatMap(role -> role.getPermissions().stream())
                 .anyMatch(permission -> permissionCode.equals(permission.getPermissionCode()));
+    }
+    public boolean isBuiltInAdmin() {
+        return BUILT_IN_ADMIN_USERNAME.equals(username);
     }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

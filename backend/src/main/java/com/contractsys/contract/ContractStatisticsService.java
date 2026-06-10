@@ -1,28 +1,29 @@
 package com.contractsys.contract;
 
-import com.contractsys.contract.dto.ContractView;
 import com.contractsys.user.SysUser;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class ContractStatisticsService {
     private final ContractRepository contractRepository;
     private final ContractTaskRepository taskRepository;
-    private final ContractQueryService queryService;
     private final ContractAccessGuard accessGuard;
+    private final ObjectProvider<ContractStatisticsService> selfProvider;
 
     public ContractStatisticsService(ContractRepository contractRepository,
-                                     ContractTaskRepository taskRepository,
-                                     ContractQueryService queryService,
-                                     ContractAccessGuard accessGuard) {
+                                      ContractTaskRepository taskRepository,
+                                      ContractAccessGuard accessGuard,
+                                      ObjectProvider<ContractStatisticsService> selfProvider) {
         this.contractRepository = contractRepository;
         this.taskRepository = taskRepository;
-        this.queryService = queryService;
         this.accessGuard = accessGuard;
+        this.selfProvider = selfProvider;
     }
 
     @Cacheable(cacheNames = "contractStats", key = "'global'")
@@ -50,15 +51,24 @@ public class ContractStatisticsService {
 
     public Map<String, Object> getStatistics(SysUser user) {
         if (accessGuard.hasPermission(user, "contract:query")) {
-            return getStatistics();
+            return selfProvider.getObject().getStatistics();
         }
-        List<ContractView> related = queryService.list("", "", 1, 10000, user).getContent();
+        Map<ContractStatus, Long> byStatus = contractRepository.countRelatedByStatus(
+                        user.getId(),
+                        accessGuard.hasPermission(user, "contract:assign"),
+                        ContractStatus.DRAFT
+                ).stream()
+                .collect(Collectors.toMap(
+                        row -> (ContractStatus) row[0],
+                        row -> ((Number) row[1]).longValue()
+                ));
+        long total = byStatus.values().stream().mapToLong(Long::longValue).sum();
         return Map.of(
-                "total", (long) related.size(),
-                "draft", related.stream().filter(contract -> contract.status() == ContractStatus.DRAFT).count(),
-                "assigned", related.stream().filter(contract -> contract.status() == ContractStatus.ASSIGNED).count(),
-                "signed", related.stream().filter(contract -> contract.status() == ContractStatus.SIGNED).count(),
-                "rejected", related.stream().filter(contract -> contract.status() == ContractStatus.REJECTED).count(),
+                "total", total,
+                "draft", byStatus.getOrDefault(ContractStatus.DRAFT, 0L),
+                "assigned", byStatus.getOrDefault(ContractStatus.ASSIGNED, 0L),
+                "signed", byStatus.getOrDefault(ContractStatus.SIGNED, 0L),
+                "rejected", byStatus.getOrDefault(ContractStatus.REJECTED, 0L),
                 "pendingTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.PENDING)
         );
     }

@@ -16,8 +16,7 @@ public class ContractTemplate {
     @Column(length = 100)
     private String description;
 
-    @Lob
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
 
     @Column(nullable = false)

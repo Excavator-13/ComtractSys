@@ -94,6 +94,14 @@ public interface ContractRepository extends JpaRepository<Contract, Long> {
     @Query("SELECT c.status, COUNT(c) FROM Contract c WHERE c.deleted=false GROUP BY c.status")
     List<Object[]> countByStatus();
 
+    @Query("SELECT c.status, COUNT(DISTINCT c) FROM Contract c LEFT JOIN ContractTask t ON t.contract = c " +
+           "WHERE c.deleted=false " +
+           "AND (c.drafter.id = :userId OR t.assignee.id = :userId OR (:includeDraftForAssigner = true AND c.status = :draftStatus)) " +
+           "GROUP BY c.status")
+    List<Object[]> countRelatedByStatus(@Param("userId") Long userId,
+                                        @Param("includeDraftForAssigner") boolean includeDraftForAssigner,
+                                        @Param("draftStatus") ContractStatus draftStatus);
+
     @Query("SELECT year(c.createdAt), month(c.createdAt), COUNT(c) " +
            "FROM Contract c WHERE c.deleted=false GROUP BY year(c.createdAt), month(c.createdAt) " +
            "ORDER BY year(c.createdAt), month(c.createdAt)")

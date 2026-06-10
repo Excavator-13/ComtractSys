@@ -2,7 +2,7 @@ CREATE TABLE contract_template (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(60) NOT NULL,
   description VARCHAR(100),
-  content CLOB NOT NULL,
+  content TEXT NOT NULL,
   enabled BOOLEAN NOT NULL,
   created_at TIMESTAMP NOT NULL,
   updated_at TIMESTAMP NOT NULL
@@ -13,7 +13,7 @@ CREATE TABLE contract_version (
   contract_id BIGINT NOT NULL,
   version_no INT NOT NULL,
   name VARCHAR(40) NOT NULL,
-  content CLOB NOT NULL,
+  content TEXT NOT NULL,
   operator_id BIGINT NOT NULL,
   remark VARCHAR(100),
   created_at TIMESTAMP NOT NULL,

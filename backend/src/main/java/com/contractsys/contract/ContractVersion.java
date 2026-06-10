@@ -20,8 +20,7 @@ public class ContractVersion {
     @Column(nullable = false, length = 40)
     private String name;
 
-    @Lob
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
 
     @ManyToOne(optional = false)

@@ -28,8 +28,7 @@ public class Contract {
     @Column(nullable = false)
     private LocalDate endDate;
 
-    @Lob
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
 
     @ManyToOne(optional = false)
@@ -41,7 +40,7 @@ public class Contract {
 
     private LocalDate signedDate;
 
-    @Lob
+    @Column(columnDefinition = "TEXT")
     private String signInfo;
 
     @Version
@@ -84,4 +83,3 @@ public class Contract {
     public boolean isDeleted() { return deleted; }
     public void setDeleted(boolean deleted) { this.deleted = deleted; }
 }
-

@@ -171,6 +171,22 @@ class BoundaryIntegrationTest {
     }
 
     @Test
+    void contractDateQueryAcceptsIsoDateAndRejectsInvalidDateAsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/v1/contracts")
+                        .header("Authorization", bearer())
+                        .param("beginFrom", "2026-06-10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        mockMvc.perform(get("/api/v1/contracts")
+                        .header("Authorization", bearer())
+                        .param("beginFrom", "bad-date"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(40000))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("beginFrom")));
+    }
+
+    @Test
     void listEndpointsNormalizeNonPositivePagination() throws Exception {
         mockMvc.perform(get("/api/v1/contracts")
                         .header("Authorization", bearer())
@@ -191,6 +207,19 @@ class BoundaryIntegrationTest {
     void creatingContractRejectsEndDateBeforeBeginDate() throws Exception {
         Long customerId = createCustomer();
         mockMvc.perform(post("/api/v1/contracts")
+                        .header("Authorization", bearer())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(contractPayload(customerId, LocalDate.now(), LocalDate.now().minusDays(1))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(40000));
+    }
+
+    @Test
+    void updatingContractRejectsEndDateBeforeBeginDate() throws Exception {
+        Long customerId = createCustomer();
+        Long contractId = createContract(customerId);
+
+        mockMvc.perform(put("/api/v1/contracts/" + contractId)
                         .header("Authorization", bearer())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(contractPayload(customerId, LocalDate.now(), LocalDate.now().minusDays(1))))

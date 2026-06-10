@@ -1,6 +1,7 @@
 package com.contractsys.log;
 
 import com.contractsys.common.PageRequests;
+import com.contractsys.common.CsvEscaper;
 import com.contractsys.user.SysUser;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
@@ -47,12 +48,12 @@ public class OperationLogService {
         sb.append("时间,操作人,模块,动作,对象类型,对象ID,内容\n");
         for (OperationLog log : logs) {
             sb.append(log.getCreatedAt()).append(',');
-            sb.append(escapeCsv(log.getOperatorName())).append(',');
-            sb.append(escapeCsv(log.getModule())).append(',');
-            sb.append(escapeCsv(log.getAction())).append(',');
-            sb.append(escapeCsv(log.getTargetType())).append(',');
+            sb.append(CsvEscaper.escape(log.getOperatorName())).append(',');
+            sb.append(CsvEscaper.escape(log.getModule())).append(',');
+            sb.append(CsvEscaper.escape(log.getAction())).append(',');
+            sb.append(CsvEscaper.escape(log.getTargetType())).append(',');
             sb.append(log.getTargetId() == null ? "" : log.getTargetId()).append(',');
-            sb.append(escapeCsv(log.getContent())).append('\n');
+            sb.append(CsvEscaper.escape(log.getContent())).append('\n');
         }
         return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
@@ -63,11 +64,4 @@ public class OperationLogService {
                 : user.getDisplayName();
     }
 
-    private String escapeCsv(String val) {
-        if (val == null) return "";
-        if (val.contains(",") || val.contains("\"") || val.contains("\n")) {
-            return "\"" + val.replace("\"", "\"\"") + "\"";
-        }
-        return val;
-    }
 }

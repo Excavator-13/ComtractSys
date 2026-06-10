@@ -20,8 +20,15 @@ api.interceptors.response.use(
     }
     return response.data
   },
-  (error) => {
-    const message = error.response?.data?.message || error.message || '请求失败'
+  async (error) => {
+    let message = error.response?.data?.message || error.message || '请求失败'
+    if (error.response?.data instanceof Blob) {
+      try {
+        const text = await error.response.data.text()
+        const data = JSON.parse(text)
+        message = data.message || message
+      } catch {}
+    }
     const isLoginRequest = error.config?.url?.includes('/auth/login')
     if (error.response?.status === 401 && !isLoginRequest) {
       localStorage.removeItem('token')
