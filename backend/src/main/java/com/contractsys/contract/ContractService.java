@@ -1,6 +1,7 @@
 package com.contractsys.contract;
 
 import com.contractsys.common.ApiException;
+import com.contractsys.common.BusinessNumberService;
 import com.contractsys.common.event.ContractChangedEvent;
 import com.contractsys.common.event.OperationLogEvent;
 import com.contractsys.contract.dto.*;
@@ -24,7 +25,7 @@ public class ContractService {
     private final ContractTaskRepository taskRepository;
     private final ContractStateHistoryRepository stateHistoryRepository;
     private final ContractVersionRepository versionRepository;
-    private final ContractNumberService numberService;
+    private final BusinessNumberService numberService;
     private final CustomerRepository customerRepository;
     private final UserRepository userRepository;
     private final ContractAccessGuard accessGuard;
@@ -34,7 +35,7 @@ public class ContractService {
     public ContractService(ContractRepository contractRepository, ContractTaskRepository taskRepository,
                            ContractStateHistoryRepository stateHistoryRepository,
                            ContractVersionRepository versionRepository,
-                           ContractNumberService numberService,
+                           BusinessNumberService numberService,
                            CustomerRepository customerRepository, UserRepository userRepository,
                            ContractAccessGuard accessGuard,
                            ContractQueryService queryService,

@@ -1,24 +1,26 @@
 package com.contractsys.customer;
 
 import com.contractsys.common.ApiException;
+import com.contractsys.common.BusinessNumberService;
 import com.contractsys.common.PageRequests;
-import com.contractsys.contract.ContractNumberService;
-import com.contractsys.contract.ContractRepository;
 import com.contractsys.customer.dto.CustomerRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 public class CustomerService {
     private final CustomerRepository customerRepository;
-    private final ContractRepository contractRepository;
-    private final ContractNumberService numberService;
+    private final List<CustomerReferenceChecker> referenceCheckers;
+    private final BusinessNumberService numberService;
 
-    public CustomerService(CustomerRepository customerRepository, ContractRepository contractRepository,
-                           ContractNumberService numberService) {
+    public CustomerService(CustomerRepository customerRepository,
+                           List<CustomerReferenceChecker> referenceCheckers,
+                           BusinessNumberService numberService) {
         this.customerRepository = customerRepository;
-        this.contractRepository = contractRepository;
+        this.referenceCheckers = referenceCheckers;
         this.numberService = numberService;
     }
 
@@ -51,8 +53,10 @@ public class CustomerService {
     public void delete(Long id) {
         Customer customer = customerRepository.findById(id).filter(c -> !c.isDeleted())
                 .orElseThrow(() -> ApiException.notFound("客户不存在"));
-        if (contractRepository.existsByCustomerIdAndDeletedFalse(id)) {
-            throw ApiException.conflict("客户已被合同引用，不能删除");
+        for (CustomerReferenceChecker checker : referenceCheckers) {
+            if (checker.hasReference(id)) {
+                throw ApiException.conflict("客户已被" + checker.moduleName() + "引用，不能删除");
+            }
         }
         customer.setDeleted(true);
     }

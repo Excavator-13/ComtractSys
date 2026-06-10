@@ -1,11 +1,11 @@
-package com.contractsys.contract;
+package com.contractsys.common;
 
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 
 @Service
-public class ContractNumberService {
+public class BusinessNumberService {
     public String temporaryNumber() {
         return "TMP" + Long.toUnsignedString(System.nanoTime(), 36);
     }
