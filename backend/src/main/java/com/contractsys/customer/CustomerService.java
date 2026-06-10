@@ -67,7 +67,7 @@ public class CustomerService {
             }
         }
         customer.setDeleted(true);
-        eventPublisher.publishEvent(new OperationLogEvent(operator, "CUSTOMER", "删除客户", "CUSTOMER", id, "删除客户"));
+        eventPublisher.publishEvent(new OperationLogEvent(operator, "CUSTOMER", "删除客户", "CUSTOMER", id, customer.getName()));
     }
 
     private void fill(Customer customer, CustomerRequest request) {

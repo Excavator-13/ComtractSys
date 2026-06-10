@@ -6,6 +6,7 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -39,14 +40,14 @@ public class ContractStatisticsService {
         long signed = byStatus.getOrDefault(ContractStatus.SIGNED, 0L);
         long rejected = byStatus.getOrDefault(ContractStatus.REJECTED, 0L);
         long pendingTasks = taskRepository.countByTaskStatus(TaskStatus.PENDING);
-        return Map.of(
-                "total", total,
-                "draft", draft,
-                "assigned", assigned,
-                "signed", signed,
-                "rejected", rejected,
-                "pendingTasks", pendingTasks
-        );
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("total", total);
+        stats.put("draft", draft);
+        stats.put("assigned", assigned);
+        stats.put("signed", signed);
+        stats.put("rejected", rejected);
+        stats.put("pendingTasks", pendingTasks);
+        return stats;
     }
 
     public Map<String, Object> getStatistics(SysUser user) {
@@ -63,22 +64,22 @@ public class ContractStatisticsService {
                         row -> ((Number) row[1]).longValue()
                 ));
         long total = byStatus.values().stream().mapToLong(Long::longValue).sum();
-        return Map.of(
-                "total", total,
-                "draft", byStatus.getOrDefault(ContractStatus.DRAFT, 0L),
-                "assigned", byStatus.getOrDefault(ContractStatus.ASSIGNED, 0L),
-                "signed", byStatus.getOrDefault(ContractStatus.SIGNED, 0L),
-                "rejected", byStatus.getOrDefault(ContractStatus.REJECTED, 0L),
-                "pendingTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.PENDING)
-        );
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("total", total);
+        stats.put("draft", byStatus.getOrDefault(ContractStatus.DRAFT, 0L));
+        stats.put("assigned", byStatus.getOrDefault(ContractStatus.ASSIGNED, 0L));
+        stats.put("signed", byStatus.getOrDefault(ContractStatus.SIGNED, 0L));
+        stats.put("rejected", byStatus.getOrDefault(ContractStatus.REJECTED, 0L));
+        stats.put("pendingTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.PENDING));
+        return stats;
     }
 
     public Map<String, Object> getMyTaskStatistics(SysUser user) {
-        return Map.of(
-                "pendingTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.PENDING),
-                "doneTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.DONE),
-                "rejectedTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.REJECTED)
-        );
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("pendingTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.PENDING));
+        stats.put("doneTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.DONE));
+        stats.put("rejectedTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.REJECTED));
+        return stats;
     }
 
     @Cacheable(cacheNames = "monthlyStats", key = "'all'")
@@ -87,11 +88,11 @@ public class ContractStatisticsService {
                 .map(row -> {
                     int year = ((Number) row[0]).intValue();
                     int month = ((Number) row[1]).intValue();
-                    return Map.<String, Object>of(
-                            "month", year + "-" + String.format("%02d", month),
-                            "count", ((Number) row[2]).longValue()
-                    );
+                    Map<String, Object> entry = new LinkedHashMap<>();
+                    entry.put("month", year + "-" + String.format("%02d", month));
+                    entry.put("count", ((Number) row[2]).longValue());
+                    return entry;
                 })
-                .toList();
+                .collect(Collectors.toCollection(java.util.ArrayList::new));
     }
 }

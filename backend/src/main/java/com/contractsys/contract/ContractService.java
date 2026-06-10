@@ -208,6 +208,9 @@ public class ContractService {
         Contract contract = accessGuard.getContractForUpdate(id);
         accessGuard.ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.REJECTED);
+        if (!contract.getDrafter().getId().equals(operator.getId())) {
+            throw ApiException.forbidden("只有起草人可以重新提交");
+        }
         List<ContractTask> approvalTasks = taskRepository.findByContractIdAndTaskType(contract.getId(), TaskType.APPROVAL);
         for (ContractTask task : approvalTasks) {
             task.setTaskStatus(TaskStatus.PENDING);
