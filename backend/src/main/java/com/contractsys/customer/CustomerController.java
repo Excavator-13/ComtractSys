@@ -3,11 +3,12 @@ package com.contractsys.customer;
 import com.contractsys.auth.AuthService;
 import com.contractsys.auth.RequirePermission;
 import com.contractsys.common.ApiResponse;
+import com.contractsys.common.event.OperationLogEvent;
 import com.contractsys.common.PageResponse;
 import com.contractsys.customer.dto.CustomerRequest;
-import com.contractsys.log.OperationLogService;
 import com.contractsys.user.SysUser;
 import jakarta.validation.Valid;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -16,13 +17,13 @@ import org.springframework.web.bind.annotation.*;
 public class CustomerController {
     private final CustomerService customerService;
     private final AuthService authService;
-    private final OperationLogService operationLogService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public CustomerController(CustomerService customerService, AuthService authService,
-                              OperationLogService operationLogService) {
+                              ApplicationEventPublisher eventPublisher) {
         this.customerService = customerService;
         this.authService = authService;
-        this.operationLogService = operationLogService;
+        this.eventPublisher = eventPublisher;
     }
 
     @GetMapping
@@ -37,7 +38,7 @@ public class CustomerController {
     public ApiResponse<Customer> create(@Valid @RequestBody CustomerRequest request) {
         SysUser user = authService.requireUser();
         Customer customer = customerService.create(request);
-        operationLogService.record(user, "CUSTOMER", "新增客户", "CUSTOMER", customer.getId(), customer.getName());
+        eventPublisher.publishEvent(new OperationLogEvent(user, "CUSTOMER", "新增客户", "CUSTOMER", customer.getId(), customer.getName()));
         return ApiResponse.ok(customer);
     }
 
@@ -46,7 +47,7 @@ public class CustomerController {
                                         @Valid @RequestBody CustomerRequest request) {
         SysUser user = authService.requireUser();
         Customer customer = customerService.update(id, request);
-        operationLogService.record(user, "CUSTOMER", "修改客户", "CUSTOMER", customer.getId(), customer.getName());
+        eventPublisher.publishEvent(new OperationLogEvent(user, "CUSTOMER", "修改客户", "CUSTOMER", customer.getId(), customer.getName()));
         return ApiResponse.ok(customer);
     }
 
@@ -54,7 +55,7 @@ public class CustomerController {
     public ApiResponse<Void> delete(@PathVariable Long id) {
         SysUser user = authService.requireUser();
         customerService.delete(id);
-        operationLogService.record(user, "CUSTOMER", "删除客户", "CUSTOMER", id, "删除客户");
+        eventPublisher.publishEvent(new OperationLogEvent(user, "CUSTOMER", "删除客户", "CUSTOMER", id, "删除客户"));
         return ApiResponse.ok(null);
     }
 }

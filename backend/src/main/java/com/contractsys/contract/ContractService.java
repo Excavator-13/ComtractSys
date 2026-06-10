@@ -1,15 +1,16 @@
 package com.contractsys.contract;
 
 import com.contractsys.common.ApiException;
+import com.contractsys.common.event.ContractChangedEvent;
+import com.contractsys.common.event.OperationLogEvent;
 import com.contractsys.common.PageRequests;
 import com.contractsys.contract.dto.*;
 import com.contractsys.customer.Customer;
 import com.contractsys.customer.CustomerRepository;
-import com.contractsys.log.OperationLogService;
 import com.contractsys.user.SysUser;
 import com.contractsys.user.UserRepository;
 import com.contractsys.user.UserStatus;
-import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
@@ -32,8 +33,8 @@ public class ContractService {
     private final ContractNumberService numberService;
     private final CustomerRepository customerRepository;
     private final UserRepository userRepository;
-    private final OperationLogService operationLogService;
     private final ContractAccessGuard accessGuard;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ContractService(ContractRepository contractRepository, ContractTaskRepository taskRepository,
                            ContractStateHistoryRepository stateHistoryRepository,
@@ -41,8 +42,8 @@ public class ContractService {
                            ContractVersionRepository versionRepository,
                            ContractNumberService numberService,
                            CustomerRepository customerRepository, UserRepository userRepository,
-                           OperationLogService operationLogService,
-                           ContractAccessGuard accessGuard) {
+                           ContractAccessGuard accessGuard,
+                           ApplicationEventPublisher eventPublisher) {
         this.contractRepository = contractRepository;
         this.taskRepository = taskRepository;
         this.stateHistoryRepository = stateHistoryRepository;
@@ -51,8 +52,8 @@ public class ContractService {
         this.numberService = numberService;
         this.customerRepository = customerRepository;
         this.userRepository = userRepository;
-        this.operationLogService = operationLogService;
         this.accessGuard = accessGuard;
+        this.eventPublisher = eventPublisher;
     }
 
     public Page<ContractView> list(String keyword, String statusStr, int page, int size, SysUser user) {
@@ -118,7 +119,6 @@ public class ContractService {
     }
 
     @Transactional
-    @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractView create(ContractCreateRequest request, SysUser operator) {
         if (request.endDate().isBefore(request.beginDate())) {
             throw ApiException.badRequest("结束日期不能早于开始日期");
@@ -143,7 +143,6 @@ public class ContractService {
     }
 
     @Transactional
-    @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView assign(Long id, AssignRequest request, SysUser operator) {
         Contract contract = accessGuard.getContractForUpdate(id);
         accessGuard.ensureMutableContract(contract);
@@ -167,7 +166,6 @@ public class ContractService {
     }
 
     @Transactional
-    @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView countersign(Long id, OpinionRequest request, SysUser operator) {
         Contract contract = accessGuard.getContractForUpdate(id);
         accessGuard.ensureMutableContract(contract);
@@ -181,7 +179,6 @@ public class ContractService {
     }
 
     @Transactional
-    @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView finalizeContract(Long id, FinalizeRequest request, SysUser operator) {
         Contract contract = accessGuard.getContractForUpdate(id);
         accessGuard.ensureMutableContract(contract);
@@ -197,7 +194,6 @@ public class ContractService {
     }
 
     @Transactional
-    @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView approve(Long id, ApproveRequest request, SysUser operator) {
         Contract contract = accessGuard.getContractForUpdate(id);
         accessGuard.ensureMutableContract(contract);
@@ -213,7 +209,6 @@ public class ContractService {
     }
 
     @Transactional
-    @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView sign(Long id, SignRequest request, SysUser operator) {
         Contract contract = accessGuard.getContractForUpdate(id);
         accessGuard.ensureMutableContract(contract);
@@ -228,7 +223,6 @@ public class ContractService {
     }
 
     @Transactional
-    @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractView update(Long id, ContractCreateRequest request, SysUser operator) {
         Contract contract = accessGuard.getContractForUpdate(id);
         accessGuard.ensureMutableContract(contract);
@@ -253,7 +247,6 @@ public class ContractService {
     }
 
     @Transactional
-    @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public void delete(Long id, SysUser operator) {
         Contract contract = accessGuard.getContractForUpdate(id);
         if (contract.getStatus() != ContractStatus.DRAFT && contract.getStatus() != ContractStatus.CANCELLED) {
@@ -266,7 +259,6 @@ public class ContractService {
     }
 
     @Transactional
-    @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public void cancel(Long id, SysUser operator) {
         Contract contract = accessGuard.getContractForUpdate(id);
         if (contract.getStatus() == ContractStatus.SIGNED || contract.getStatus() == ContractStatus.CANCELLED) {
@@ -285,7 +277,6 @@ public class ContractService {
     }
 
     @Transactional
-    @CacheEvict(cacheNames = {"contractStats", "monthlyStats"}, allEntries = true)
     public ContractDetailView resubmit(Long id, SysUser operator) {
         Contract contract = accessGuard.getContractForUpdate(id);
         accessGuard.ensureMutableContract(contract);
@@ -532,8 +523,9 @@ public class ContractService {
         history.setOperator(operator);
         history.setRemark(remark);
         stateHistoryRepository.save(history);
-        operationLogService.record(operator, "CONTRACT", remark, "CONTRACT", contract.getId(),
-                contract.getContractNo() + " " + contract.getName() + " " + (from == null ? "-" : from) + " -> " + to);
+        eventPublisher.publishEvent(new ContractChangedEvent(contract.getId()));
+        eventPublisher.publishEvent(new OperationLogEvent(operator, "CONTRACT", remark, "CONTRACT", contract.getId(),
+                contract.getContractNo() + " " + contract.getName() + " " + (from == null ? "-" : from) + " -> " + to));
     }
 
     private void recordVersion(Contract contract, SysUser operator, String remark) {

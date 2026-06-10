@@ -5,8 +5,6 @@ import com.contractsys.auth.RequirePermission;
 import com.contractsys.common.ApiResponse;
 import com.contractsys.common.PageResponse;
 import com.contractsys.contract.dto.*;
-import com.contractsys.log.OperationLog;
-import com.contractsys.log.OperationLogService;
 import com.contractsys.user.SysUser;
 import jakarta.validation.Valid;
 import org.springframework.core.io.Resource;
@@ -28,15 +26,12 @@ public class ContractController {
     private final ContractService contractService;
     private final ContractAttachmentService attachmentService;
     private final AuthService authService;
-    private final OperationLogService operationLogService;
 
     public ContractController(ContractService contractService, ContractAttachmentService attachmentService,
-                              AuthService authService,
-                              OperationLogService operationLogService) {
+                              AuthService authService) {
         this.contractService = contractService;
         this.attachmentService = attachmentService;
         this.authService = authService;
-        this.operationLogService = operationLogService;
     }
 
     @GetMapping("/contracts")
@@ -219,31 +214,6 @@ public class ContractController {
         SysUser user = authService.requireUser();
         contractService.cancel(id, user);
         return ApiResponse.ok(null);
-    }
-
-    @GetMapping("/logs")
-    @RequirePermission("log:view")
-    public ApiResponse<PageResponse<OperationLog>> logs(@RequestParam(defaultValue = "") String keyword,
-                                                        @RequestParam(defaultValue = "") String module,
-                                                        @RequestParam(defaultValue = "1") int page,
-                                                        @RequestParam(defaultValue = "10") int size) {
-        authService.requireUser();
-        return ApiResponse.ok(PageResponse.from(operationLogService.list(keyword, module, page, size)));
-    }
-
-    @GetMapping("/logs/export")
-    @RequirePermission("log:view")
-    public ResponseEntity<Resource> exportLogs(@RequestParam(defaultValue = "") String keyword,
-                                               @RequestParam(defaultValue = "") String module) {
-        authService.requireUser();
-        byte[] csv = operationLogService.export(keyword, module);
-        Resource resource = new org.springframework.core.io.ByteArrayResource(csv);
-        String filename = "logs_" + java.time.LocalDate.now() + ".csv";
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename*=UTF-8''" + URLEncoder.encode(filename, StandardCharsets.UTF_8))
-                .contentType(MediaType.parseMediaType("text/csv; charset=UTF-8"))
-                .body(resource);
     }
 
     @PostMapping("/contracts/{id}/attachments")

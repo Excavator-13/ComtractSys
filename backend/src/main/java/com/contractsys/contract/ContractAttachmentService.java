@@ -1,9 +1,10 @@
 package com.contractsys.contract;
 
 import com.contractsys.common.ApiException;
+import com.contractsys.common.event.OperationLogEvent;
 import com.contractsys.contract.dto.AttachmentView;
-import com.contractsys.log.OperationLogService;
 import com.contractsys.user.SysUser;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
@@ -23,16 +24,16 @@ public class ContractAttachmentService {
     private final ContractAccessGuard accessGuard;
     private final FileStorageService fileStorageService;
     private final AttachmentRepository attachmentRepository;
-    private final OperationLogService operationLogService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ContractAttachmentService(ContractAccessGuard accessGuard,
                                      FileStorageService fileStorageService,
                                      AttachmentRepository attachmentRepository,
-                                     OperationLogService operationLogService) {
+                                     ApplicationEventPublisher eventPublisher) {
         this.accessGuard = accessGuard;
         this.fileStorageService = fileStorageService;
         this.attachmentRepository = attachmentRepository;
-        this.operationLogService = operationLogService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -85,8 +86,8 @@ public class ContractAttachmentService {
         accessGuard.ensureCanModifyContract(attachment.getContract(), user);
         Path filePath = fileStorageService.resolve(attachment.getStoredName());
         attachmentRepository.delete(attachment);
-        operationLogService.record(user, "CONTRACT", "删除附件", "ATTACHMENT", attachment.getId(),
-                attachment.getOriginalName());
+        eventPublisher.publishEvent(new OperationLogEvent(user, "CONTRACT", "删除附件", "ATTACHMENT", attachment.getId(),
+                attachment.getOriginalName()));
         deleteFileAfterCommit(filePath);
     }
 
@@ -100,8 +101,8 @@ public class ContractAttachmentService {
         attachment.setFileSize(stored.fileSize());
         attachment.setUploader(user);
         attachmentRepository.save(attachment);
-        operationLogService.record(user, "CONTRACT", "上传附件", "ATTACHMENT", attachment.getId(),
-                contract.getContractNo() + " " + attachment.getOriginalName());
+        eventPublisher.publishEvent(new OperationLogEvent(user, "CONTRACT", "上传附件", "ATTACHMENT", attachment.getId(),
+                contract.getContractNo() + " " + attachment.getOriginalName()));
         return attachment;
     }
 

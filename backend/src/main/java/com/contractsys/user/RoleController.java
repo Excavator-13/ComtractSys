@@ -4,12 +4,13 @@ import com.contractsys.auth.AuthService;
 import com.contractsys.auth.RequirePermission;
 import com.contractsys.common.ApiException;
 import com.contractsys.common.ApiResponse;
-import com.contractsys.log.OperationLogService;
+import com.contractsys.common.event.OperationLogEvent;
 import com.contractsys.user.dto.AssignPermissionsRequest;
 import com.contractsys.user.dto.RoleRequest;
 import com.contractsys.user.dto.RoleUpdateRequest;
 import com.contractsys.user.dto.RoleView;
 import jakarta.validation.Valid;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -24,16 +25,16 @@ public class RoleController {
     private final PermissionRepository permissionRepository;
     private final UserRepository userRepository;
     private final AuthService authService;
-    private final OperationLogService operationLogService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public RoleController(RoleRepository roleRepository, PermissionRepository permissionRepository,
                           UserRepository userRepository, AuthService authService,
-                          OperationLogService operationLogService) {
+                          ApplicationEventPublisher eventPublisher) {
         this.roleRepository = roleRepository;
         this.permissionRepository = permissionRepository;
         this.userRepository = userRepository;
         this.authService = authService;
-        this.operationLogService = operationLogService;
+        this.eventPublisher = eventPublisher;
     }
 
     @GetMapping
@@ -53,7 +54,7 @@ public class RoleController {
         role.setRoleName(request.roleName());
         role.setDescription(request.description());
         SysRole saved = roleRepository.save(role);
-        operationLogService.record(operator, "ROLE", "新增角色", "ROLE", saved.getId(), saved.getRoleCode());
+        eventPublisher.publishEvent(new OperationLogEvent(operator, "ROLE", "新增角色", "ROLE", saved.getId(), saved.getRoleCode()));
         return ApiResponse.ok("创建成功", RoleView.from(saved));
     }
 
@@ -68,7 +69,7 @@ public class RoleController {
         role.setRoleName(request.roleName());
         role.setDescription(request.description());
         SysRole saved = roleRepository.save(role);
-        operationLogService.record(operator, "ROLE", "修改角色", "ROLE", saved.getId(), saved.getRoleCode());
+        eventPublisher.publishEvent(new OperationLogEvent(operator, "ROLE", "修改角色", "ROLE", saved.getId(), saved.getRoleCode()));
         return ApiResponse.ok(RoleView.from(saved));
     }
 
@@ -83,7 +84,7 @@ public class RoleController {
             throw ApiException.conflict("角色已被用户绑定，不能删除");
         }
         roleRepository.delete(role);
-        operationLogService.record(operator, "ROLE", "删除角色", "ROLE", role.getId(), role.getRoleCode());
+        eventPublisher.publishEvent(new OperationLogEvent(operator, "ROLE", "删除角色", "ROLE", role.getId(), role.getRoleCode()));
         return ApiResponse.ok(null);
     }
 
@@ -103,7 +104,7 @@ public class RoleController {
             ));
         }
         SysRole saved = roleRepository.save(role);
-        operationLogService.record(operator, "ROLE", "分配权限", "ROLE", saved.getId(), saved.getRoleCode());
+        eventPublisher.publishEvent(new OperationLogEvent(operator, "ROLE", "分配权限", "ROLE", saved.getId(), saved.getRoleCode()));
         return ApiResponse.ok(RoleView.from(saved));
     }
 }

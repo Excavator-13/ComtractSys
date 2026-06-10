@@ -4,10 +4,11 @@ import com.contractsys.auth.AuthService;
 import com.contractsys.auth.RequirePermission;
 import com.contractsys.common.ApiException;
 import com.contractsys.common.ApiResponse;
-import com.contractsys.log.OperationLogService;
+import com.contractsys.common.event.OperationLogEvent;
 import com.contractsys.user.dto.PermissionRequest;
 import com.contractsys.user.dto.PermissionView;
 import jakarta.validation.Valid;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -37,14 +38,14 @@ public class PermissionController {
     private final PermissionRepository permissionRepository;
     private final RoleRepository roleRepository;
     private final AuthService authService;
-    private final OperationLogService operationLogService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public PermissionController(PermissionRepository permissionRepository, RoleRepository roleRepository,
-                                AuthService authService, OperationLogService operationLogService) {
+                                AuthService authService, ApplicationEventPublisher eventPublisher) {
         this.permissionRepository = permissionRepository;
         this.roleRepository = roleRepository;
         this.authService = authService;
-        this.operationLogService = operationLogService;
+        this.eventPublisher = eventPublisher;
     }
 
     @GetMapping
@@ -64,8 +65,8 @@ public class PermissionController {
         permission.setPermissionCode(request.permissionCode());
         applyRequest(permission, request);
         permissionRepository.save(permission);
-        operationLogService.record(operator, "SYSTEM", "新增权限", "PERMISSION", permission.getId(),
-                permission.getPermissionCode());
+        eventPublisher.publishEvent(new OperationLogEvent(operator, "SYSTEM", "新增权限", "PERMISSION", permission.getId(),
+                permission.getPermissionCode()));
         return ApiResponse.ok("创建成功", PermissionView.from(permission));
     }
 
@@ -81,8 +82,8 @@ public class PermissionController {
         }
         applyRequest(permission, request);
         permissionRepository.save(permission);
-        operationLogService.record(operator, "SYSTEM", "修改权限", "PERMISSION", permission.getId(),
-                permission.getPermissionCode());
+        eventPublisher.publishEvent(new OperationLogEvent(operator, "SYSTEM", "修改权限", "PERMISSION", permission.getId(),
+                permission.getPermissionCode()));
         return ApiResponse.ok("更新成功", PermissionView.from(permission));
     }
 
@@ -99,8 +100,8 @@ public class PermissionController {
             throw ApiException.conflict("该权限已分配给角色，不能删除");
         }
         permissionRepository.delete(permission);
-        operationLogService.record(operator, "SYSTEM", "删除权限", "PERMISSION", id,
-                permission.getPermissionCode());
+        eventPublisher.publishEvent(new OperationLogEvent(operator, "SYSTEM", "删除权限", "PERMISSION", id,
+                permission.getPermissionCode()));
         return ApiResponse.ok(null);
     }
 

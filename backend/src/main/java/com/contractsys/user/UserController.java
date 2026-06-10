@@ -5,9 +5,9 @@ import com.contractsys.auth.RequirePermission;
 import com.contractsys.auth.dto.UserView;
 import com.contractsys.common.ApiException;
 import com.contractsys.common.ApiResponse;
+import com.contractsys.common.event.OperationLogEvent;
 import com.contractsys.common.PageResponse;
 import com.contractsys.common.PageRequests;
-import com.contractsys.log.OperationLogService;
 import com.contractsys.user.dto.AssignRolesRequest;
 import com.contractsys.user.dto.UserCreateRequest;
 import com.contractsys.user.dto.UserStatusRequest;
@@ -15,6 +15,7 @@ import com.contractsys.user.dto.UserUpdateRequest;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,16 +29,16 @@ public class UserController {
     private final RoleRepository roleRepository;
     private final AuthService authService;
     private final PasswordEncoder passwordEncoder;
-    private final OperationLogService operationLogService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public UserController(UserRepository userRepository, RoleRepository roleRepository,
                           AuthService authService, PasswordEncoder passwordEncoder,
-                          OperationLogService operationLogService) {
+                          ApplicationEventPublisher eventPublisher) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.authService = authService;
         this.passwordEncoder = passwordEncoder;
-        this.operationLogService = operationLogService;
+        this.eventPublisher = eventPublisher;
     }
 
     @GetMapping
@@ -98,7 +99,7 @@ public class UserController {
             roleRepository.findByRoleCode("ROLE_NEW_USER").ifPresent(user.getRoles()::add);
         }
         userRepository.save(user);
-        operationLogService.record(operator, "USER", "新增用户", "USER", user.getId(), user.getUsername());
+        eventPublisher.publishEvent(new OperationLogEvent(operator, "USER", "新增用户", "USER", user.getId(), user.getUsername()));
         return ApiResponse.ok("创建成功", UserView.from(user));
     }
 
@@ -118,7 +119,7 @@ public class UserController {
             user.setPasswordHash(passwordEncoder.encode(request.password()));
         }
         userRepository.save(user);
-        operationLogService.record(operator, "USER", "修改用户", "USER", user.getId(), user.getUsername());
+        eventPublisher.publishEvent(new OperationLogEvent(operator, "USER", "修改用户", "USER", user.getId(), user.getUsername()));
         return ApiResponse.ok("更新成功", UserView.from(user));
     }
 
@@ -133,8 +134,8 @@ public class UserController {
         }
         user.setStatus(request.status());
         userRepository.save(user);
-        operationLogService.record(operator, "USER", "启停用户", "USER", user.getId(),
-                user.getUsername() + " -> " + request.status());
+        eventPublisher.publishEvent(new OperationLogEvent(operator, "USER", "启停用户", "USER", user.getId(),
+                user.getUsername() + " -> " + request.status()));
         return ApiResponse.ok(null);
     }
 
@@ -148,7 +149,7 @@ public class UserController {
         }
         user.setDeleted(true);
         userRepository.save(user);
-        operationLogService.record(operator, "USER", "删除用户", "USER", user.getId(), user.getUsername());
+        eventPublisher.publishEvent(new OperationLogEvent(operator, "USER", "删除用户", "USER", user.getId(), user.getUsername()));
         return ApiResponse.ok(null);
     }
 
@@ -170,7 +171,7 @@ public class UserController {
             requestedRoleIds.forEach(roleId -> user.getRoles().add(findRole(roleId)));
         }
         userRepository.save(user);
-        operationLogService.record(operator, "USER", "分配角色", "USER", user.getId(), user.getUsername());
+        eventPublisher.publishEvent(new OperationLogEvent(operator, "USER", "分配角色", "USER", user.getId(), user.getUsername()));
         return ApiResponse.ok("角色分配成功", UserView.from(user));
     }
 
