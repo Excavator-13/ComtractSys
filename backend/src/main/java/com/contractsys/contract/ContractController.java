@@ -24,12 +24,22 @@ import java.util.Map;
 @RequestMapping("/api/v1")
 public class ContractController {
     private final ContractService contractService;
+    private final ContractQueryService queryService;
+    private final ContractExportService exportService;
+    private final ContractStatisticsService statisticsService;
     private final ContractAttachmentService attachmentService;
     private final AuthService authService;
 
-    public ContractController(ContractService contractService, ContractAttachmentService attachmentService,
+    public ContractController(ContractService contractService,
+                              ContractQueryService queryService,
+                              ContractExportService exportService,
+                              ContractStatisticsService statisticsService,
+                              ContractAttachmentService attachmentService,
                               AuthService authService) {
         this.contractService = contractService;
+        this.queryService = queryService;
+        this.exportService = exportService;
+        this.statisticsService = statisticsService;
         this.attachmentService = attachmentService;
         this.authService = authService;
     }
@@ -47,7 +57,7 @@ public class ContractController {
                                                         @RequestParam(defaultValue = "1") int page,
                                                         @RequestParam(defaultValue = "10") int size) {
         SysUser user = authService.requireUser();
-        return ApiResponse.ok(PageResponse.from(contractService.advancedList(
+        return ApiResponse.ok(PageResponse.from(queryService.advancedList(
                 keyword, status, customerId, drafterId, beginFrom, beginTo, endFrom, endTo, page, size, user)));
     }
 
@@ -64,7 +74,7 @@ public class ContractController {
                                                          @RequestParam(defaultValue = "1") int page,
                                                          @RequestParam(defaultValue = "10") int size) {
         authService.requireUser();
-        return ApiResponse.ok(PageResponse.from(contractService.advancedQuery(
+        return ApiResponse.ok(PageResponse.from(queryService.advancedQuery(
                 keyword, status, customerId, drafterId, beginFrom, beginTo, endFrom, endTo, page, size)));
     }
 
@@ -79,7 +89,7 @@ public class ContractController {
                                                     @RequestParam(required = false) LocalDate endFrom,
                                                     @RequestParam(required = false) LocalDate endTo) {
         SysUser user = authService.requireUser();
-        byte[] csv = contractService.exportContracts(keyword, status, customerId, drafterId, beginFrom, beginTo, endFrom, endTo, user);
+        byte[] csv = exportService.exportContracts(keyword, status, customerId, drafterId, beginFrom, beginTo, endFrom, endTo, user);
         Resource resource = new org.springframework.core.io.ByteArrayResource(csv);
         String filename = "contracts_" + java.time.LocalDate.now() + ".csv";
         return ResponseEntity.ok()
@@ -93,14 +103,14 @@ public class ContractController {
     @RequirePermission("contract:create")
     public ApiResponse<List<ContractTemplateView>> templates() {
         authService.requireUser();
-        return ApiResponse.ok(contractService.templates());
+        return ApiResponse.ok(queryService.templates());
     }
 
     @GetMapping("/contracts/{id}")
     @RequirePermission({"contract:view", "contract:query"})
     public ApiResponse<ContractDetailView> detail(@PathVariable Long id) {
         SysUser user = authService.requireUser();
-        return ApiResponse.ok(contractService.detail(id, user));
+        return ApiResponse.ok(queryService.detail(id, user));
     }
 
     @PostMapping(value = "/contracts", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -136,28 +146,28 @@ public class ContractController {
     @RequirePermission({"contract:assign", "contract:countersign", "contract:approve", "contract:sign", "contract:update"})
     public ApiResponse<List<TaskView>> myTasks() {
         SysUser user = authService.requireUser();
-        return ApiResponse.ok(contractService.myTasks(user));
+        return ApiResponse.ok(queryService.myTasks(user));
     }
 
     @GetMapping("/contracts/{id}/process")
     @RequirePermission({"contract:view", "contract:query"})
     public ApiResponse<Map<String, Object>> process(@PathVariable Long id) {
         SysUser user = authService.requireUser();
-        return ApiResponse.ok(contractService.process(id, user));
+        return ApiResponse.ok(queryService.process(id, user));
     }
 
     @GetMapping("/contracts/{id}/versions")
     @RequirePermission({"contract:view", "contract:query"})
     public ApiResponse<List<ContractVersionView>> versions(@PathVariable Long id) {
         SysUser user = authService.requireUser();
-        return ApiResponse.ok(contractService.versions(id, user));
+        return ApiResponse.ok(queryService.versions(id, user));
     }
 
     @GetMapping("/contracts/{id}/timeline")
     @RequirePermission({"contract:view", "contract:query"})
     public ApiResponse<List<ContractTimelineView>> timeline(@PathVariable Long id) {
         SysUser user = authService.requireUser();
-        return ApiResponse.ok(contractService.timeline(id, user));
+        return ApiResponse.ok(queryService.timeline(id, user));
     }
 
     @PostMapping("/contracts/{id}/countersign")
@@ -274,28 +284,28 @@ public class ContractController {
     @RequirePermission({"contract:view", "contract:query"})
     public ApiResponse<Map<String, Object>> statistics() {
         SysUser user = authService.requireUser();
-        return ApiResponse.ok(contractService.getStatistics(user));
+        return ApiResponse.ok(statisticsService.getStatistics(user));
     }
 
     @GetMapping("/statistics/contracts/status")
     @RequirePermission({"contract:view", "contract:query"})
     public ApiResponse<Map<String, Object>> contractStatusStatistics() {
         SysUser user = authService.requireUser();
-        return ApiResponse.ok(contractService.getStatistics(user));
+        return ApiResponse.ok(statisticsService.getStatistics(user));
     }
 
     @GetMapping("/statistics/tasks/my")
     @RequirePermission({"contract:assign", "contract:countersign", "contract:approve", "contract:sign", "contract:update"})
     public ApiResponse<Map<String, Object>> myTaskStatistics() {
         SysUser user = authService.requireUser();
-        return ApiResponse.ok(contractService.getMyTaskStatistics(user));
+        return ApiResponse.ok(statisticsService.getMyTaskStatistics(user));
     }
 
     @GetMapping("/statistics/contracts/monthly")
     @RequirePermission("contract:query")
     public ApiResponse<List<Map<String, Object>>> monthlyContractStatistics() {
         authService.requireUser();
-        return ApiResponse.ok(contractService.getMonthlyStatistics());
+        return ApiResponse.ok(statisticsService.getMonthlyStatistics());
     }
 
 }

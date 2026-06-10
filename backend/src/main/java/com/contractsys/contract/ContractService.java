@@ -3,7 +3,6 @@ package com.contractsys.contract;
 import com.contractsys.common.ApiException;
 import com.contractsys.common.event.ContractChangedEvent;
 import com.contractsys.common.event.OperationLogEvent;
-import com.contractsys.common.PageRequests;
 import com.contractsys.contract.dto.*;
 import com.contractsys.customer.Customer;
 import com.contractsys.customer.CustomerRepository;
@@ -11,16 +10,12 @@ import com.contractsys.user.SysUser;
 import com.contractsys.user.UserRepository;
 import com.contractsys.user.UserStatus;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -28,94 +23,32 @@ public class ContractService {
     private final ContractRepository contractRepository;
     private final ContractTaskRepository taskRepository;
     private final ContractStateHistoryRepository stateHistoryRepository;
-    private final ContractTemplateRepository templateRepository;
     private final ContractVersionRepository versionRepository;
     private final ContractNumberService numberService;
     private final CustomerRepository customerRepository;
     private final UserRepository userRepository;
     private final ContractAccessGuard accessGuard;
+    private final ContractQueryService queryService;
     private final ApplicationEventPublisher eventPublisher;
 
     public ContractService(ContractRepository contractRepository, ContractTaskRepository taskRepository,
                            ContractStateHistoryRepository stateHistoryRepository,
-                           ContractTemplateRepository templateRepository,
                            ContractVersionRepository versionRepository,
                            ContractNumberService numberService,
                            CustomerRepository customerRepository, UserRepository userRepository,
                            ContractAccessGuard accessGuard,
+                           ContractQueryService queryService,
                            ApplicationEventPublisher eventPublisher) {
         this.contractRepository = contractRepository;
         this.taskRepository = taskRepository;
         this.stateHistoryRepository = stateHistoryRepository;
-        this.templateRepository = templateRepository;
         this.versionRepository = versionRepository;
         this.numberService = numberService;
         this.customerRepository = customerRepository;
         this.userRepository = userRepository;
         this.accessGuard = accessGuard;
+        this.queryService = queryService;
         this.eventPublisher = eventPublisher;
-    }
-
-    public Page<ContractView> list(String keyword, String statusStr, int page, int size, SysUser user) {
-        ContractStatus status = parseStatus(statusStr);
-        return contractRepository.searchRelated(
-                keyword == null ? "" : keyword,
-                status,
-                user.getId(),
-                accessGuard.hasPermission(user, "contract:assign"),
-                ContractStatus.DRAFT,
-                PageRequests.of(page, size)
-        ).map(ContractView::from);
-    }
-
-    public Page<ContractView> advancedList(String keyword, String statusStr, Long customerId, Long drafterId,
-                                           LocalDate beginFrom, LocalDate beginTo, LocalDate endFrom, LocalDate endTo,
-                                           int page, int size, SysUser user) {
-        ContractStatus status = parseStatus(statusStr);
-        return contractRepository.advancedSearchRelated(
-                keyword == null ? "" : keyword,
-                status, customerId, drafterId, beginFrom, beginTo, endFrom, endTo,
-                user.getId(),
-                accessGuard.hasPermission(user, "contract:assign"),
-                ContractStatus.DRAFT,
-                PageRequests.of(page, size)
-        ).map(ContractView::from);
-    }
-
-    public Page<ContractView> query(String keyword, String statusStr, int page, int size) {
-        ContractStatus status = parseStatus(statusStr);
-        return contractRepository.search(
-                keyword == null ? "" : keyword, status,
-                PageRequests.of(page, size)
-        ).map(ContractView::from);
-    }
-
-    public Page<ContractView> advancedQuery(String keyword, String statusStr, Long customerId, Long drafterId,
-                                            LocalDate beginFrom, LocalDate beginTo, LocalDate endFrom, LocalDate endTo,
-                                            int page, int size) {
-        ContractStatus status = parseStatus(statusStr);
-        return contractRepository.advancedSearch(
-                keyword == null ? "" : keyword,
-                status, customerId, drafterId, beginFrom, beginTo, endFrom, endTo,
-                PageRequests.of(page, size)
-        ).map(ContractView::from);
-    }
-
-    public ContractDetailView detail(Long id, SysUser user) {
-        Contract contract = accessGuard.getContract(id);
-        accessGuard.ensureCanViewContract(contract, user);
-        List<TaskView> tasks = taskRepository.findByContractIdOrderByCreatedAtAsc(id).stream().map(TaskView::from).toList();
-        return new ContractDetailView(ContractView.from(contract), tasks);
-    }
-
-    public Map<String, Object> process(Long id, SysUser user) {
-        Contract contract = accessGuard.getContract(id);
-        accessGuard.ensureCanViewContract(contract, user);
-        return Map.of(
-                "contract", ContractView.from(contract),
-                "tasks", taskRepository.findByContractIdOrderByCreatedAtAsc(id).stream().map(TaskView::from).toList(),
-                "histories", stateHistoryRepository.findByContractIdOrderByCreatedAtAsc(id)
-        );
     }
 
     @Transactional
@@ -158,11 +91,7 @@ public class ContractService {
         createUniqueTasks(contract, request.approvalUserIds(), TaskType.APPROVAL, "contract:approve");
         createTask(contract, request.signUserId(), TaskType.SIGN, "contract:sign");
         changeStatus(contract, ContractStatus.ASSIGNED, operator, "管理员分配合同流程人员");
-        return detail(id, operator);
-    }
-
-    public List<TaskView> myTasks(SysUser user) {
-        return taskRepository.findByAssigneeAndTaskStatus(user, TaskStatus.PENDING).stream().map(TaskView::from).toList();
+        return queryService.detail(id, operator);
     }
 
     @Transactional
@@ -175,7 +104,7 @@ public class ContractService {
             changeStatus(contract, ContractStatus.COUNTERSIGNED, operator, "全部会签完成");
             createTask(contract, contract.getDrafter().getId(), TaskType.FINALIZE, "contract:update");
         }
-        return detail(id, operator);
+        return queryService.detail(id, operator);
     }
 
     @Transactional
@@ -190,7 +119,7 @@ public class ContractService {
         contract.setContent(request.content());
         recordVersion(contract, operator, "起草人定稿");
         changeStatus(contract, ContractStatus.FINALIZED, operator, "起草人定稿");
-        return detail(id, operator);
+        return queryService.detail(id, operator);
     }
 
     @Transactional
@@ -205,7 +134,7 @@ public class ContractService {
         } else if (!taskRepository.existsByContractIdAndTaskTypeAndTaskStatus(id, TaskType.APPROVAL, TaskStatus.PENDING)) {
             changeStatus(contract, ContractStatus.APPROVED, operator, "全部审批通过");
         }
-        return detail(id, operator);
+        return queryService.detail(id, operator);
     }
 
     @Transactional
@@ -219,7 +148,7 @@ public class ContractService {
         if (!taskRepository.existsByContractIdAndTaskTypeAndTaskStatus(id, TaskType.SIGN, TaskStatus.PENDING)) {
             changeStatus(contract, ContractStatus.SIGNED, operator, "合同签订完成");
         }
-        return detail(id, operator);
+        return queryService.detail(id, operator);
     }
 
     @Transactional
@@ -268,14 +197,6 @@ public class ContractService {
         changeStatus(contract, ContractStatus.CANCELLED, operator, "取消合同");
     }
 
-    public Page<ContractStateHistory> logs(String keyword, int page, int size) {
-        var pr = PageRequests.of(page, size);
-        if (keyword == null || keyword.isEmpty()) {
-            return contractRepository.findHistory(pr);
-        }
-        return contractRepository.findHistoryByKeyword(keyword, pr);
-    }
-
     @Transactional
     public ContractDetailView resubmit(Long id, SysUser operator) {
         Contract contract = accessGuard.getContractForUpdate(id);
@@ -289,151 +210,7 @@ public class ContractService {
         }
         taskRepository.saveAll(approvalTasks);
         changeStatus(contract, ContractStatus.FINALIZED, operator, "重新提交审批");
-        return detail(id, operator);
-    }
-
-    public byte[] exportLogs(String keyword) throws Exception {
-        StringBuilder sb = new StringBuilder();
-        sb.append("﻿"); // BOM for Excel UTF-8
-        sb.append("时间,合同编号,合同名称,操作人,原状态,新状态,备注\n");
-        List<ContractStateHistory> list;
-        if (keyword == null || keyword.isEmpty()) {
-            list = contractRepository.findHistory(org.springframework.data.domain.PageRequest.of(0, 10000)).getContent();
-        } else {
-            list = contractRepository.findHistoryByKeyword(keyword, org.springframework.data.domain.PageRequest.of(0, 10000)).getContent();
-        }
-        for (ContractStateHistory h : list) {
-            sb.append(h.getCreatedAt()).append(',');
-            sb.append(escapeCsv(h.getContract().getContractNo())).append(',');
-            sb.append(escapeCsv(h.getContract().getName())).append(',');
-            sb.append(escapeCsv(h.getOperator().getDisplayName())).append(',');
-            sb.append(h.getFromStatus() != null ? h.getFromStatus() : "-").append(',');
-            sb.append(h.getToStatus()).append(',');
-            sb.append(escapeCsv(h.getRemark() != null ? h.getRemark() : "")).append('\n');
-        }
-        return sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
-    }
-
-    public byte[] exportContracts(String keyword, String statusStr, Long customerId, Long drafterId,
-                                  LocalDate beginFrom, LocalDate beginTo, LocalDate endFrom, LocalDate endTo,
-                                  SysUser user) {
-        Page<ContractView> result = accessGuard.hasPermission(user, "contract:query")
-                ? advancedQuery(keyword, statusStr, customerId, drafterId, beginFrom, beginTo, endFrom, endTo, 1, 10000)
-                : advancedList(keyword, statusStr, customerId, drafterId, beginFrom, beginTo, endFrom, endTo, 1, 10000, user);
-        StringBuilder sb = new StringBuilder();
-        sb.append("\uFEFF");
-        sb.append("合同编号,合同名称,客户,状态,起草人,开始日期,结束日期,签订日期\n");
-        for (ContractView c : result.getContent()) {
-            sb.append(escapeCsv(c.contractNo())).append(',');
-            sb.append(escapeCsv(c.name())).append(',');
-            sb.append(escapeCsv(c.customerName())).append(',');
-            sb.append(c.status()).append(',');
-            sb.append(escapeCsv(c.drafterName())).append(',');
-            sb.append(c.beginDate()).append(',');
-            sb.append(c.endDate()).append(',');
-            sb.append(c.signedDate() == null ? "" : c.signedDate()).append('\n');
-        }
-        return sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
-    }
-
-    private String escapeCsv(String val) {
-        if (val == null) return "";
-        if (val.contains(",") || val.contains("\"") || val.contains("\n")) {
-            return "\"" + val.replace("\"", "\"\"") + "\"";
-        }
-        return val;
-    }
-
-    @Cacheable(cacheNames = "contractStats", key = "'global'")
-    public Map<String, Object> getStatistics() {
-        Map<ContractStatus, Long> byStatus = contractRepository.countByStatus().stream()
-                .collect(java.util.stream.Collectors.toMap(
-                        row -> (ContractStatus) row[0],
-                        row -> ((Number) row[1]).longValue()
-                ));
-        long total = byStatus.values().stream().mapToLong(Long::longValue).sum();
-        long draft = byStatus.getOrDefault(ContractStatus.DRAFT, 0L);
-        long assigned = byStatus.getOrDefault(ContractStatus.ASSIGNED, 0L);
-        long signed = byStatus.getOrDefault(ContractStatus.SIGNED, 0L);
-        long rejected = byStatus.getOrDefault(ContractStatus.REJECTED, 0L);
-        long pendingTasks = taskRepository.countByTaskStatus(TaskStatus.PENDING);
-        return Map.of(
-                "total", total,
-                "draft", draft,
-                "assigned", assigned,
-                "signed", signed,
-                "rejected", rejected,
-                "pendingTasks", pendingTasks
-        );
-    }
-
-    public Map<String, Object> getStatistics(SysUser user) {
-        if (accessGuard.hasPermission(user, "contract:query")) {
-            return getStatistics();
-        }
-        List<ContractView> related = list("", "", 1, 10000, user).getContent();
-        return Map.of(
-                "total", (long) related.size(),
-                "draft", related.stream().filter(c -> c.status() == ContractStatus.DRAFT).count(),
-                "assigned", related.stream().filter(c -> c.status() == ContractStatus.ASSIGNED).count(),
-                "signed", related.stream().filter(c -> c.status() == ContractStatus.SIGNED).count(),
-                "rejected", related.stream().filter(c -> c.status() == ContractStatus.REJECTED).count(),
-                "pendingTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.PENDING)
-        );
-    }
-
-    public Map<String, Object> getMyTaskStatistics(SysUser user) {
-        return Map.of(
-                "pendingTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.PENDING),
-                "doneTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.DONE),
-                "rejectedTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.REJECTED)
-        );
-    }
-
-    @Cacheable(cacheNames = "monthlyStats", key = "'all'")
-    public List<Map<String, Object>> getMonthlyStatistics() {
-        return contractRepository.countByCreatedMonth().stream()
-                .map(row -> {
-                    int year = ((Number) row[0]).intValue();
-                    int month = ((Number) row[1]).intValue();
-                    return Map.<String, Object>of(
-                            "month", year + "-" + String.format("%02d", month),
-                            "count", ((Number) row[2]).longValue()
-                    );
-                })
-                .toList();
-    }
-
-    @Cacheable(cacheNames = "contractTemplates", key = "'enabled'")
-    public List<ContractTemplateView> templates() {
-        return templateRepository.findByEnabledTrueOrderByCreatedAtAsc().stream()
-                .map(ContractTemplateView::from)
-                .toList();
-    }
-
-    public List<ContractVersionView> versions(Long id, SysUser user) {
-        accessGuard.ensureCanViewContract(id, user);
-        return versionRepository.findByContractIdOrderByVersionNoDesc(id).stream()
-                .map(ContractVersionView::from)
-                .toList();
-    }
-
-    public List<ContractTimelineView> timeline(Long id, SysUser user) {
-        accessGuard.ensureCanViewContract(id, user);
-        return stateHistoryRepository.findByContractIdOrderByCreatedAtAsc(id).stream()
-                .map(ContractTimelineView::from)
-                .toList();
-    }
-
-    private ContractStatus parseStatus(String statusStr) {
-        if (statusStr == null || statusStr.isEmpty()) {
-            return null;
-        }
-        try {
-            return ContractStatus.valueOf(statusStr);
-        } catch (IllegalArgumentException ex) {
-            throw ApiException.badRequest("合同状态不合法: " + statusStr);
-        }
+        return queryService.detail(id, operator);
     }
 
     private void createAssignTasks(Contract contract) {
