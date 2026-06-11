@@ -15,6 +15,7 @@ public record TaskView(
         Long assigneeId,
         String assigneeName,
         String opinion,
+        int round,
         LocalDateTime operatedAt
 ) {
     public static TaskView from(ContractTask task) {
@@ -27,8 +28,8 @@ public record TaskView(
                 task.getAssignee().getId(),
                 task.getAssignee().getDisplayName(),
                 task.getOpinion(),
+                task.getRound(),
                 task.getOperatedAt()
         );
     }
 }
-

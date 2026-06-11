@@ -8,10 +8,11 @@ public record PermissionView(
         String permissionName,
         String module,
         String url,
-        String description
+        String description,
+        boolean core
 ) {
-    public static PermissionView from(SysPermission p) {
+    public static PermissionView from(SysPermission p, boolean core) {
         return new PermissionView(p.getId(), p.getPermissionCode(), p.getPermissionName(),
-                p.getModule(), p.getUrl(), p.getDescription());
+                p.getModule(), p.getUrl(), p.getDescription(), core);
     }
 }

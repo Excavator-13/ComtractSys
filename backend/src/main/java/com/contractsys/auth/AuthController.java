@@ -6,6 +6,7 @@ import com.contractsys.auth.dto.RegisterRequest;
 import com.contractsys.auth.dto.UserView;
 import com.contractsys.common.ApiResponse;
 import com.contractsys.user.SysUser;
+import com.contractsys.user.dto.UserUpdateRequest;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,6 +32,12 @@ public class AuthController {
     @GetMapping("/me")
     public ApiResponse<UserView> me(@CurrentUser SysUser user) {
         return ApiResponse.ok(UserView.from(user));
+    }
+
+    @PutMapping("/profile")
+    public ApiResponse<UserView> updateProfile(@CurrentUser SysUser user,
+                                               @Valid @RequestBody UserUpdateRequest request) {
+        return ApiResponse.ok("更新成功", authService.updateProfile(user, request));
     }
 
     @PostMapping("/logout")

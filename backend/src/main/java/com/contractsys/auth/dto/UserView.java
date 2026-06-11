@@ -14,7 +14,8 @@ public record UserView(
         String email,
         String status,
         List<String> roles,
-        List<String> permissions
+        List<String> permissions,
+        boolean builtInAdmin
 ) {
     public static UserView from(SysUser user) {
         List<String> roles = user.getRoles().stream().map(SysRole::getRoleCode).sorted().toList();
@@ -26,6 +27,6 @@ public record UserView(
                 .toList();
         return new UserView(user.getId(), user.getUsername(), user.getDisplayName(),
                 user.getPhone(), user.getEmail(), user.getStatus().name(),
-                roles, permissions);
+                roles, permissions, user.isBuiltInAdmin());
     }
 }

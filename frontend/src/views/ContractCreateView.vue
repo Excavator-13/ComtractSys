@@ -1,7 +1,7 @@
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowLeft, Paperclip, Upload, X } from 'lucide-vue-next'
+import { ArrowLeft, Download, Paperclip, Upload, X } from 'lucide-vue-next'
 import { api } from '../api'
 
 const router = useRouter()
@@ -10,7 +10,6 @@ const templates = ref([])
 const error = ref('')
 const loading = ref(false)
 const files = ref([])
-const selectedTemplateId = ref('')
 
 const form = reactive({
   name: '',
@@ -24,9 +23,6 @@ async function loadCustomers() {
   try {
     const res = await api.get('/customers', { params: { page: 1, size: 100 } })
     customers.value = res.data.records
-    if (!form.customerId && customers.value[0]) {
-      form.customerId = customers.value[0].id
-    }
   } catch (err) {
     error.value = err.message
   }
@@ -34,7 +30,7 @@ async function loadCustomers() {
 
 async function submit() {
   if (!form.name || !form.customerId || !form.content) {
-    error.value = '请填写合同名称、客户和内容'
+    error.value = '请填写合同名称、客户和合同概述'
     return
   }
   loading.value = true
@@ -72,11 +68,18 @@ async function loadTemplates() {
   } catch {}
 }
 
-function applyTemplate() {
-  const template = templates.value.find(t => t.id === Number(selectedTemplateId.value))
-  if (!template) return
-  form.content = template.content
-  if (!form.name) form.name = template.name.replace('模板', '')
+async function downloadTemplate(template) {
+  try {
+    const res = await api.get(`/contract-templates/${template.id}/download`, { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = template.originalName || `${template.name}.txt`
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    error.value = err.message
+  }
 }
 
 function removeFile(index) {
@@ -113,16 +116,27 @@ onMounted(() => {
         </label>
         <label>开始日期<input v-model="form.beginDate" type="date" required /></label>
         <label>结束日期<input v-model="form.endDate" type="date" required /></label>
-        <label class="full">合同模板
-          <div class="search-bar">
-            <select v-model="selectedTemplateId" style="max-width:280px">
-              <option value="">不使用模板</option>
-              <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
-            </select>
-            <button class="secondary" type="button" :disabled="!selectedTemplateId" @click="applyTemplate">套用模板</button>
+        <div class="full attachment-box">
+          <div class="attachment-head">
+            <div>
+              <strong>参考模板</strong>
+              <p class="muted">下载模板线下拟稿后，可在下方作为附件上传。模板不会覆盖合同概述。</p>
+            </div>
+            <button class="secondary" type="button" @click="router.push('/templates')">模板库</button>
           </div>
-        </label>
-        <label class="full">合同内容<textarea v-model="form.content" rows="8" placeholder="输入合同正文内容" required /></label>
+          <div v-if="templates.length" class="attachment-list">
+            <div v-for="t in templates" :key="t.id" class="attachment-item">
+              <Paperclip :size="16" />
+              <span>{{ t.name }}</span>
+              <small>{{ t.description || t.originalName || '文本模板' }}</small>
+              <button class="icon mini" type="button" title="下载模板" @click="downloadTemplate(t)">
+                <Download :size="14" />
+              </button>
+            </div>
+          </div>
+          <p v-else class="empty-hint">暂无可用模板</p>
+        </div>
+        <label class="full">合同概述<textarea v-model="form.content" rows="8" placeholder="概述合同目标、范围、关键条款和交付要求" required /></label>
         <div class="full attachment-box">
           <div class="attachment-head">
             <div>

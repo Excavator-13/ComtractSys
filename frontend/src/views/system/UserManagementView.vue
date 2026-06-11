@@ -132,6 +132,11 @@ function goPage(p) {
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 
+function roleName(roleCode) {
+  const role = roles.value.find(r => r.roleCode === roleCode)
+  return role?.roleName || roleCode
+}
+
 onMounted(() => { loadUsers(); loadRoles() })
 </script>
 
@@ -188,7 +193,7 @@ onMounted(() => { loadUsers(); loadRoles() })
           <tr v-for="u in users" :key="u.id">
             <td>{{ u.username }}</td>
             <td>{{ u.displayName }}</td>
-            <td><span v-for="r in u.roles" :key="r" class="status" style="margin-right:4px">{{ r }}</span></td>
+            <td><span v-for="r in u.roles" :key="r" class="status" style="margin-right:4px">{{ roleName(r) }}</span></td>
             <td>
               <span :class="u.status === 'ENABLED' ? 'status status-APPROVED' : 'status status-REJECTED'">
                 {{ u.status === 'ENABLED' ? '启用' : '禁用' }}
@@ -197,8 +202,12 @@ onMounted(() => { loadUsers(); loadRoles() })
             <td class="row-actions">
               <button @click="openEdit(u)"><Pencil :size="14" /> 编辑</button>
               <button @click="openRoleAssign(u)"><ShieldCheck :size="14" /> 角色</button>
-              <button @click="toggleStatus(u)">{{ u.status === 'ENABLED' ? '禁用' : '启用' }}</button>
-              <button @click="remove(u.id)"><Trash2 :size="14" /> 删除</button>
+              <button :disabled="u.builtInAdmin" :title="u.builtInAdmin ? '内置管理员不能禁用' : ''" @click="toggleStatus(u)">
+                {{ u.status === 'ENABLED' ? '禁用' : '启用' }}
+              </button>
+              <button :disabled="u.builtInAdmin" :title="u.builtInAdmin ? '内置管理员不能删除' : ''" @click="remove(u.id)">
+                <Trash2 :size="14" /> 删除
+              </button>
             </td>
           </tr>
           <tr v-if="users.length === 0"><td colspan="5" class="muted" style="text-align:center">暂无用户</td></tr>

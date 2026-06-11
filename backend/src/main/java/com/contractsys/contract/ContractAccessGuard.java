@@ -48,7 +48,7 @@ public class ContractAccessGuard {
         return hasPermission(user, "contract:query")
                 || contract.getDrafter().getId().equals(user.getId())
                 || taskRepository.existsByContractIdAndAssigneeId(contract.getId(), user.getId())
-                || (contract.getStatus() == ContractStatus.DRAFT && hasPermission(user, "contract:assign"));
+                || hasPermission(user, "contract:assign");
     }
 
     public boolean hasPermission(SysUser user, String permissionCode) {

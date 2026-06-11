@@ -4,12 +4,15 @@ import { useRouter } from 'vue-router'
 import { FilePlus2, Handshake, RefreshCcw } from 'lucide-vue-next'
 import { api } from '../api'
 import { useAuthStore } from '../stores/auth'
+import StatusBadge from '../components/StatusBadge.vue'
+import { contractStatuses } from '../constants/contract'
 
 const router = useRouter()
 const auth = useAuthStore()
 const contracts = ref([])
 const tasks = ref([])
 const stats = reactive({ total: 0, draft: 0, assigned: 0, signed: 0, rejected: 0, pendingTasks: 0 })
+const monthlyStats = ref([])
 const error = ref('')
 const canViewContracts = computed(() => auth.permissions.includes('contract:view'))
 const canCreateContract = computed(() => auth.permissions.includes('contract:create'))
@@ -24,6 +27,7 @@ async function loadData() {
     if (canViewContracts.value) {
       requests.push(
         api.get('/statistics').then(res => Object.assign(stats, res.data)),
+        api.get('/statistics/contracts/monthly').then(res => monthlyStats.value = res.data),
         api.get('/contracts', { params: { page: 1, size: 10 } }).then(res => contracts.value = res.data.records)
       )
     }
@@ -36,15 +40,23 @@ async function loadData() {
   }
 }
 
-function statusLabel(status) {
-  const map = { DRAFT:'待分配', ASSIGNED:'待会签', COUNTERSIGNED:'待定稿', FINALIZED:'待审批', APPROVED:'待签订', SIGNED:'已签订', REJECTED:'已拒绝', CANCELLED:'已取消' }
-  return map[status] || status
-}
-
 const inProgressCount = computed(() => {
   const active = ['ASSIGNED', 'COUNTERSIGNED', 'FINALIZED', 'APPROVED']
   return contracts.value.filter(c => active.includes(c.status)).length
 })
+
+const statusDistribution = computed(() => {
+  const distribution = stats.statusDistribution || {}
+  return contractStatuses
+    .filter(item => item.value)
+    .map(item => ({ ...item, count: distribution[item.value] || 0 }))
+})
+
+const monthlyMax = computed(() => Math.max(1, ...monthlyStats.value.map(item => item.count || 0)))
+
+function openStatus(status) {
+  router.push({ path: '/contracts', query: { status } })
+}
 
 onMounted(loadData)
 </script>
@@ -75,6 +87,25 @@ onMounted(loadData)
 
     <section v-if="canViewContracts" class="panel">
       <div class="section-title">
+        <h2>状态分布</h2>
+      </div>
+      <div class="status-grid">
+        <button v-for="item in statusDistribution" :key="item.value" class="status-card" @click="openStatus(item.value)">
+          <StatusBadge :value="item.value" />
+          <strong>{{ item.count }}</strong>
+        </button>
+      </div>
+      <div v-if="monthlyStats.length" class="chart-bars">
+        <div v-for="item in monthlyStats" :key="item.month" class="chart-bar">
+          <span :style="{ height: `${Math.max(8, ((item.count || 0) / monthlyMax) * 120)}px` }"></span>
+          <small>{{ item.month.slice(5) }}</small>
+          <strong>{{ item.count }}</strong>
+        </div>
+      </div>
+    </section>
+
+    <section v-if="canViewContracts" class="panel">
+      <div class="section-title">
         <h2>最近合同</h2>
         <button class="secondary" @click="loadData"><RefreshCcw :size="16" /> 刷新</button>
       </div>
@@ -87,7 +118,7 @@ onMounted(loadData)
             <td>{{ c.contractNo }}</td>
             <td>{{ c.name }}</td>
             <td>{{ c.customerName }}</td>
-            <td><span class="status" :class="'status-' + c.status?.toLowerCase()">{{ statusLabel(c.status) }}</span></td>
+            <td><StatusBadge :value="c.status" /></td>
             <td>{{ c.drafterName }}</td>
           </tr>
           <tr v-if="contracts.length === 0"><td colspan="5" class="muted" style="text-align:center">暂无合同</td></tr>

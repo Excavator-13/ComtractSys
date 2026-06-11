@@ -5,7 +5,7 @@ import { UserRound, LockKeyhole, ArrowLeft } from 'lucide-vue-next'
 import { api } from '../api'
 
 const router = useRouter()
-const form = reactive({ username: '', password: '', confirmPassword: '' })
+const form = reactive({ username: '', displayName: '', password: '', confirmPassword: '' })
 const error = ref('')
 const loading = ref(false)
 
@@ -19,10 +19,14 @@ async function register() {
     error.value = '密码长度不能少于6位'
     return
   }
+  if (form.username.length < 3) {
+    error.value = '用户名长度不能少于3位'
+    return
+  }
   loading.value = true
   try {
     await api.post('/auth/register', form)
-    router.push('/login')
+    router.push({ path: '/login', query: { registered: '1' } })
   } catch (err) {
     error.value = err.message
   } finally {
@@ -48,7 +52,14 @@ async function register() {
           <span>用户名</span>
           <div class="input">
             <UserRound :size="18" />
-            <input v-model="form.username" autocomplete="username" required />
+            <input v-model="form.username" autocomplete="username" minlength="3" required />
+          </div>
+        </label>
+        <label>
+          <span>显示名称</span>
+          <div class="input">
+            <UserRound :size="18" />
+            <input v-model="form.displayName" maxlength="40" placeholder="可选，默认同用户名" />
           </div>
         </label>
         <label>

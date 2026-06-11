@@ -1,11 +1,15 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, onMounted, computed, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { Search, FilePlus2, Eye, Pencil, Trash2, RefreshCcw } from 'lucide-vue-next'
 import { api } from '../api'
 import { useAuthStore } from '../stores/auth'
+import StatusBadge from '../components/StatusBadge.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import { contractStatuses } from '../constants/contract'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const contracts = ref([])
 const loading = ref(false)
@@ -15,21 +19,10 @@ const statusFilter = ref('')
 const page = ref(1)
 const total = ref(0)
 const pageSize = 10
+const confirmState = reactive({ show: false, title: '', message: '', action: null })
 
-const statusOptions = [
-  { value: '', label: '全部状态' },
-  { value: 'DRAFT', label: '待分配' },
-  { value: 'ASSIGNED', label: '待会签' },
-  { value: 'COUNTERSIGNED', label: '待定稿' },
-  { value: 'FINALIZED', label: '待审批' },
-  { value: 'APPROVED', label: '待签订' },
-  { value: 'SIGNED', label: '已签订' },
-  { value: 'REJECTED', label: '已拒绝' },
-]
-
-function statusLabel(status) {
-  const map = { DRAFT:'待分配', ASSIGNED:'待会签', COUNTERSIGNED:'待定稿', FINALIZED:'待审批', APPROVED:'待签订', SIGNED:'已签订', REJECTED:'已拒绝', CANCELLED:'已取消' }
-  return map[status] || status
+function dateRange(c) {
+  return `${c.beginDate || '-'} ~ ${c.endDate || '-'}`
 }
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
@@ -66,23 +59,49 @@ function editContract(c) {
   router.push({ path: `/contracts/${c.id}`, query: { edit: '1' } })
 }
 
-async function deleteContract(c) {
-  if (!confirm(`确认删除合同「${c.name}」？`)) return
-  try {
-    await api.delete(`/contracts/${c.id}`)
-    loadContracts()
-  } catch (err) {
-    error.value = err.message
-  }
+function askConfirm(title, message, action) {
+  confirmState.title = title
+  confirmState.message = message
+  confirmState.action = action
+  confirmState.show = true
 }
 
-onMounted(loadContracts)
+async function confirmDialogAction() {
+  const action = confirmState.action
+  confirmState.show = false
+  confirmState.action = null
+  if (action) await action()
+}
+
+function deleteContract(c) {
+  askConfirm('删除合同', `确认删除合同「${c.name}」？`, async () => {
+    try {
+      await api.delete(`/contracts/${c.id}`)
+      loadContracts()
+    } catch (err) {
+      error.value = err.message
+    }
+  })
+}
+
+watch(() => route.query.status, (status) => {
+  statusFilter.value = typeof status === 'string' ? status : ''
+  search()
+})
+
+onMounted(() => {
+  statusFilter.value = typeof route.query.status === 'string' ? route.query.status : ''
+  loadContracts()
+})
 </script>
 
 <template>
   <div>
     <div class="section-title">
-      <h2>合同管理</h2>
+      <div>
+        <h2>合同管理</h2>
+        <p class="muted">我相关的合同：起草、参与处理或可分配管理的合同。</p>
+      </div>
       <button v-if="hasPermission('contract:create')" class="primary" @click="router.push('/contracts/create')"><FilePlus2 :size="16" /> 起草合同</button>
     </div>
 
@@ -92,7 +111,7 @@ onMounted(loadContracts)
         <input v-model="keyword" placeholder="合同编号/名称" @keyup.enter="search" />
       </div>
       <select v-model="statusFilter" @change="search" style="max-width:140px">
-        <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+        <option v-for="opt in contractStatuses" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
       </select>
       <button class="secondary" @click="search">查询</button>
       <button class="icon" @click="loadContracts"><RefreshCcw :size="16" /></button>
@@ -103,22 +122,24 @@ onMounted(loadContracts)
     <div class="panel" style="margin-top:14px">
       <table>
         <thead>
-          <tr><th>编号</th><th>名称</th><th>客户</th><th>状态</th><th>起草人</th><th>操作</th></tr>
+          <tr><th>编号</th><th>名称</th><th>客户</th><th>状态</th><th>合同期限</th><th>起草人</th><th>操作</th></tr>
         </thead>
         <tbody>
           <tr v-for="c in contracts" :key="c.id">
             <td>{{ c.contractNo }}</td>
             <td>{{ c.name }}</td>
             <td>{{ c.customerName }}</td>
-            <td><span class="status" :class="'status-' + c.status?.toLowerCase()">{{ statusLabel(c.status) }}</span></td>
+            <td><StatusBadge :value="c.status" /></td>
+            <td>{{ dateRange(c) }}</td>
             <td>{{ c.drafterName }}</td>
             <td class="row-actions">
               <button @click="router.push(`/contracts/${c.id}`)"><Eye :size="14" /> 详情</button>
-              <button v-if="hasPermission('contract:update') && c.drafterId === auth.user?.id && (c.status === 'DRAFT' || c.status === 'REJECTED')" @click="editContract(c)"><Pencil :size="14" /> 编辑</button>
+              <button v-if="hasPermission('contract:update') && Number(c.drafterId) === Number(auth.user?.id) && (c.status === 'DRAFT' || c.status === 'REJECTED' || c.status === 'RETURNED')" @click="editContract(c)"><Pencil :size="14" /> 编辑</button>
               <button v-if="hasPermission('contract:delete') && (c.status === 'DRAFT' || c.status === 'CANCELLED')" @click="deleteContract(c)"><Trash2 :size="14" /> 删除</button>
             </td>
           </tr>
-          <tr v-if="!loading && contracts.length === 0"><td colspan="6" class="muted" style="text-align:center">暂无数据</td></tr>
+          <tr v-if="!loading && contracts.length === 0"><td colspan="7" class="muted" style="text-align:center">暂无数据</td></tr>
+          <tr v-if="loading"><td colspan="7" class="muted" style="text-align:center">加载中...</td></tr>
         </tbody>
       </table>
     </div>
@@ -128,5 +149,13 @@ onMounted(loadContracts)
       <span>{{ page }} / {{ totalPages }}</span>
       <button :disabled="page >= totalPages" @click="goPage(page + 1)">下一页</button>
     </div>
+
+    <ConfirmDialog
+      :show="confirmState.show"
+      :title="confirmState.title"
+      :message="confirmState.message"
+      @confirm="confirmDialogAction"
+      @cancel="confirmState.show = false"
+    />
   </div>
 </template>

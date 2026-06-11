@@ -39,8 +39,9 @@ public class UserController {
 
     @GetMapping("/assignable")
     @RequirePermission({"user:manage", "contract:assign"})
-    public ApiResponse<List<UserView>> assignableUsers(@CurrentUser SysUser user) {
-        return ApiResponse.ok(userService.assignableUsers());
+    public ApiResponse<List<UserView>> assignableUsers(@RequestParam(required = false) String permission,
+                                                       @CurrentUser SysUser user) {
+        return ApiResponse.ok(userService.assignableUsers(permission));
     }
 
     @PostMapping

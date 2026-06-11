@@ -18,6 +18,17 @@ export const useAuthStore = defineStore('auth', {
       localStorage.setItem('token', this.token)
       localStorage.setItem('user', JSON.stringify(this.user))
     },
+    async refreshMe() {
+      if (!this.token) return
+      const res = await api.get('/auth/me')
+      this.user = res.data
+      localStorage.setItem('user', JSON.stringify(this.user))
+    },
+    async updateProfile(payload) {
+      const res = await api.put('/auth/profile', payload)
+      this.user = res.data
+      localStorage.setItem('user', JSON.stringify(this.user))
+    },
     logout() {
       this.token = ''
       this.user = null
@@ -26,4 +37,3 @@ export const useAuthStore = defineStore('auth', {
     }
   }
 })
-

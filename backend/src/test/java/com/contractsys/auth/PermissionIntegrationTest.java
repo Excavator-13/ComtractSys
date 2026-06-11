@@ -156,6 +156,53 @@ class PermissionIntegrationTest {
                 .andExpect(jsonPath("$.code").value(40900));
     }
 
+    @Test
+    @Order(2)
+    void userViewsExposeBuiltInAdminAndProfileCanBeUpdated() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.username").value("admin"))
+                .andExpect(jsonPath("$.data.builtInAdmin").value(true));
+
+        mockMvc.perform(put("/api/v1/auth/profile")
+                        .header("Authorization", "Bearer " + operatorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"displayName":"操作员个人设置","phone":"13800000001","email":"operator@example.test"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.displayName").value("操作员个人设置"))
+                .andExpect(jsonPath("$.data.phone").value("13800000001"))
+                .andExpect(jsonPath("$.data.email").value("operator@example.test"));
+    }
+
+    @Test
+    @Order(2)
+    void permissionsExposeCoreFlagAndCorePermissionsCannotBeDeleted() throws Exception {
+        String resp = mockMvc.perform(get("/api/v1/permissions")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.permissionCode == 'contract:create')].core").value(true))
+                .andReturn().getResponse().getContentAsString();
+
+        Long createPermissionId = null;
+        for (JsonNode permission : objectMapper.readTree(resp).path("data")) {
+            if ("contract:create".equals(permission.path("permissionCode").asText())) {
+                createPermissionId = permission.path("id").asLong();
+                break;
+            }
+        }
+        if (createPermissionId == null) {
+            throw new AssertionError("未找到 contract:create 权限");
+        }
+
+        mockMvc.perform(delete("/api/v1/permissions/" + createPermissionId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(40900));
+    }
+
     // ========== Operator tests ==========
 
     @Test

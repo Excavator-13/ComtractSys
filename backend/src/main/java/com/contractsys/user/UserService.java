@@ -9,6 +9,7 @@ import com.contractsys.user.dto.UserCreateRequest;
 import com.contractsys.user.dto.UserStatusRequest;
 import com.contractsys.user.dto.UserUpdateRequest;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -51,15 +52,24 @@ public class UserService {
                 .getContent()
                 .stream()
                 .filter(user -> user.getStatus() == UserStatus.ENABLED)
+                .filter(user -> !user.isBuiltInAdmin())
+                .map(UserView::from)
+                .toList();
+    }
+
+    public List<UserView> assignableUsers(String permission) {
+        if (permission == null || permission.isBlank()) {
+            return assignableUsers();
+        }
+        return userRepository.findEnabledUsersWithPermission(permission).stream()
+                .filter(user -> !user.isBuiltInAdmin())
                 .map(UserView::from)
                 .toList();
     }
 
     @Transactional
     public UserView create(UserCreateRequest request, SysUser operator) {
-        if (userRepository.existsByUsernameAndDeletedFalse(request.username())) {
-            throw ApiException.conflict("用户名已存在");
-        }
+        freeDeletedUsernameOrFail(request.username());
         SysUser user = new SysUser();
         user.setUsername(request.username());
         user.setDisplayName(request.displayName() == null || request.displayName().isBlank() ? request.username() : request.displayName());
@@ -76,7 +86,11 @@ public class UserService {
         if (user.getRoles().isEmpty()) {
             roleRepository.findByRoleCode("ROLE_NEW_USER").ifPresent(user.getRoles()::add);
         }
-        userRepository.save(user);
+        try {
+            userRepository.save(user);
+        } catch (DataIntegrityViolationException ex) {
+            throw ApiException.conflict("用户名已存在");
+        }
         eventPublisher.publishEvent(new OperationLogEvent(operator, "USER", "新增用户", "USER", user.getId(), user.getUsername()));
         return UserView.from(user);
     }
@@ -116,9 +130,11 @@ public class UserService {
         if (user.isBuiltInAdmin()) {
             throw ApiException.conflict("内置管理员不能删除");
         }
+        String originalUsername = user.getUsername();
+        user.setUsername(deletedUsername(user));
         user.setDeleted(true);
         userRepository.save(user);
-        eventPublisher.publishEvent(new OperationLogEvent(operator, "USER", "删除用户", "USER", user.getId(), user.getUsername()));
+        eventPublisher.publishEvent(new OperationLogEvent(operator, "USER", "删除用户", "USER", user.getId(), originalUsername));
     }
 
     @Transactional
@@ -148,5 +164,19 @@ public class UserService {
     private SysRole findRole(Long roleId) {
         return roleRepository.findById(roleId)
                 .orElseThrow(() -> ApiException.notFound("角色不存在: " + roleId));
+    }
+
+    private void freeDeletedUsernameOrFail(String username) {
+        userRepository.findByUsername(username).ifPresent(existing -> {
+            if (!existing.isDeleted()) {
+                throw ApiException.conflict("用户名已存在");
+            }
+            existing.setUsername(deletedUsername(existing));
+            userRepository.saveAndFlush(existing);
+        });
+    }
+
+    private String deletedUsername(SysUser user) {
+        return "deleted#" + user.getId();
     }
 }

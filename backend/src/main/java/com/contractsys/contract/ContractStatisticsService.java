@@ -47,17 +47,19 @@ public class ContractStatisticsService {
         stats.put("signed", signed);
         stats.put("rejected", rejected);
         stats.put("pendingTasks", pendingTasks);
+        stats.put("statusDistribution", statusDistribution(byStatus));
         return stats;
     }
 
     public Map<String, Object> getStatistics(SysUser user) {
         if (accessGuard.hasPermission(user, "contract:query")) {
-            return selfProvider.getObject().getStatistics();
+            Map<String, Object> stats = new LinkedHashMap<>(selfProvider.getObject().getStatistics());
+            stats.put("pendingTasks", taskRepository.countActivePendingTasksByAssignee(user));
+            return stats;
         }
         Map<ContractStatus, Long> byStatus = contractRepository.countRelatedByStatus(
                         user.getId(),
-                        accessGuard.hasPermission(user, "contract:assign"),
-                        ContractStatus.DRAFT
+                        accessGuard.hasPermission(user, "contract:assign")
                 ).stream()
                 .collect(Collectors.toMap(
                         row -> (ContractStatus) row[0],
@@ -70,13 +72,14 @@ public class ContractStatisticsService {
         stats.put("assigned", byStatus.getOrDefault(ContractStatus.ASSIGNED, 0L));
         stats.put("signed", byStatus.getOrDefault(ContractStatus.SIGNED, 0L));
         stats.put("rejected", byStatus.getOrDefault(ContractStatus.REJECTED, 0L));
-        stats.put("pendingTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.PENDING));
+        stats.put("pendingTasks", taskRepository.countActivePendingTasksByAssignee(user));
+        stats.put("statusDistribution", statusDistribution(byStatus));
         return stats;
     }
 
     public Map<String, Object> getMyTaskStatistics(SysUser user) {
         Map<String, Object> stats = new LinkedHashMap<>();
-        stats.put("pendingTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.PENDING));
+        stats.put("pendingTasks", taskRepository.countActivePendingTasksByAssignee(user));
         stats.put("doneTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.DONE));
         stats.put("rejectedTasks", taskRepository.countByAssigneeAndTaskStatus(user, TaskStatus.REJECTED));
         return stats;
@@ -94,5 +97,13 @@ public class ContractStatisticsService {
                     return entry;
                 })
                 .collect(Collectors.toCollection(java.util.ArrayList::new));
+    }
+
+    private Map<String, Long> statusDistribution(Map<ContractStatus, Long> byStatus) {
+        Map<String, Long> distribution = new LinkedHashMap<>();
+        for (ContractStatus status : ContractStatus.values()) {
+            distribution.put(status.name(), byStatus.getOrDefault(status, 0L));
+        }
+        return distribution;
     }
 }

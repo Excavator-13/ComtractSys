@@ -28,17 +28,20 @@ public class ContractController {
     private final ContractExportService exportService;
     private final ContractStatisticsService statisticsService;
     private final ContractAttachmentService attachmentService;
+    private final ContractTemplateService templateService;
 
     public ContractController(ContractService contractService,
                               ContractQueryService queryService,
                               ContractExportService exportService,
                               ContractStatisticsService statisticsService,
-                              ContractAttachmentService attachmentService) {
+                              ContractAttachmentService attachmentService,
+                              ContractTemplateService templateService) {
         this.contractService = contractService;
         this.queryService = queryService;
         this.exportService = exportService;
         this.statisticsService = statisticsService;
         this.attachmentService = attachmentService;
+        this.templateService = templateService;
     }
 
     @GetMapping("/contracts")
@@ -99,7 +102,49 @@ public class ContractController {
     @GetMapping("/contract-templates")
     @RequirePermission("contract:create")
     public ApiResponse<List<ContractTemplateView>> templates(@CurrentUser SysUser user) {
-        return ApiResponse.ok(queryService.templates());
+        return ApiResponse.ok(templateService.listEnabled());
+    }
+
+    @GetMapping("/contract-templates/manage")
+    @RequirePermission("contract:assign")
+    public ApiResponse<List<ContractTemplateView>> manageTemplates(@CurrentUser SysUser user) {
+        return ApiResponse.ok(templateService.listAll());
+    }
+
+    @PostMapping(value = "/contract-templates", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @RequirePermission("contract:assign")
+    public ApiResponse<ContractTemplateView> createTemplate(@RequestParam String name,
+                                                            @RequestParam(required = false) String description,
+                                                            @RequestParam(required = false) String content,
+                                                            @RequestParam(value = "file", required = false) MultipartFile file,
+                                                            @CurrentUser SysUser user) {
+        return ApiResponse.ok("上传成功", templateService.create(name, description, content, file, user));
+    }
+
+    @PatchMapping("/contract-templates/{id}/enabled")
+    @RequirePermission("contract:assign")
+    public ApiResponse<ContractTemplateView> setTemplateEnabled(@PathVariable Long id,
+                                                               @RequestParam boolean enabled,
+                                                               @CurrentUser SysUser user) {
+        return ApiResponse.ok(templateService.setEnabled(id, enabled, user));
+    }
+
+    @DeleteMapping("/contract-templates/{id}")
+    @RequirePermission("contract:assign")
+    public ApiResponse<Void> deleteTemplate(@PathVariable Long id, @CurrentUser SysUser user) {
+        templateService.delete(id, user);
+        return ApiResponse.ok(null);
+    }
+
+    @GetMapping("/contract-templates/{id}/download")
+    @RequirePermission("contract:create")
+    public ResponseEntity<Resource> downloadTemplate(@PathVariable Long id, @CurrentUser SysUser user) {
+        ContractTemplateService.TemplateResource template = templateService.download(id);
+        String encodedName = URLEncoder.encode(template.filename(), StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedName)
+                .contentType(template.contentType())
+                .body(template.resource());
     }
 
     @GetMapping("/contracts/{id}")
@@ -191,6 +236,32 @@ public class ContractController {
                                                 @Valid @RequestBody SignRequest request,
                                                 @CurrentUser SysUser user) {
         return ApiResponse.ok(contractService.sign(id, request, user));
+    }
+
+    @PostMapping("/contracts/{id}/return")
+    @RequirePermission({"contract:countersign", "contract:approve", "contract:sign"})
+    public ApiResponse<ContractDetailView> returnContract(@PathVariable Long id,
+                                                          @Valid @RequestBody ReturnRequest request,
+                                                          @CurrentUser SysUser user) {
+        return ApiResponse.ok(contractService.returnContract(id, request, user));
+    }
+
+    @PostMapping("/contracts/{id}/resume")
+    @RequirePermission("contract:update")
+    public ApiResponse<ContractDetailView> resume(@PathVariable Long id, @CurrentUser SysUser user) {
+        return ApiResponse.ok(contractService.resume(id, user));
+    }
+
+    @PostMapping("/contracts/{id}/recall")
+    @RequirePermission("contract:update")
+    public ApiResponse<ContractDetailView> recall(@PathVariable Long id, @CurrentUser SysUser user) {
+        return ApiResponse.ok(contractService.recall(id, user));
+    }
+
+    @PostMapping("/contracts/{id}/tasks/withdraw")
+    @RequirePermission({"contract:countersign", "contract:approve", "contract:sign", "contract:update"})
+    public ApiResponse<ContractDetailView> withdrawTask(@PathVariable Long id, @CurrentUser SysUser user) {
+        return ApiResponse.ok(contractService.withdrawTask(id, user));
     }
 
     @PutMapping("/contracts/{id}")

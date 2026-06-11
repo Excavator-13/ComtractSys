@@ -7,7 +7,7 @@ public enum ContractStatus {
     FINALIZED,
     APPROVED,
     REJECTED,
+    RETURNED,
     SIGNED,
     CANCELLED
 }
-

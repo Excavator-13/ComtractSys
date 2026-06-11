@@ -50,7 +50,6 @@ public class ContractQueryService {
                 status,
                 user.getId(),
                 accessGuard.hasPermission(user, "contract:assign"),
-                ContractStatus.DRAFT,
                 PageRequests.of(page, size)
         ).map(ContractView::from);
     }
@@ -64,7 +63,6 @@ public class ContractQueryService {
                 status, customerId, drafterId, beginFrom, beginTo, endFrom, endTo,
                 user.getId(),
                 accessGuard.hasPermission(user, "contract:assign"),
-                ContractStatus.DRAFT,
                 PageRequests.of(page, size)
         ).map(ContractView::from);
     }
@@ -107,7 +105,6 @@ public class ContractQueryService {
                 status, customerId, drafterId, beginFrom, beginTo, endFrom, endTo,
                 user.getId(),
                 accessGuard.hasPermission(user, "contract:assign"),
-                ContractStatus.DRAFT,
                 PageRequest.of(0, 10000)
         ).map(ContractView::from);
     }
@@ -130,7 +127,7 @@ public class ContractQueryService {
     }
 
     public List<TaskView> myTasks(SysUser user) {
-        return taskRepository.findByAssigneeAndTaskStatus(user, TaskStatus.PENDING).stream().map(TaskView::from).toList();
+        return taskRepository.findActivePendingTasksByAssignee(user).stream().map(TaskView::from).toList();
     }
 
     @Cacheable(cacheNames = "contractTemplates", key = "'enabled'")

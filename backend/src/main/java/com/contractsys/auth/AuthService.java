@@ -5,6 +5,8 @@ import com.contractsys.auth.dto.RegisterRequest;
 import com.contractsys.auth.dto.UserView;
 import com.contractsys.common.ApiException;
 import com.contractsys.user.*;
+import com.contractsys.user.dto.UserUpdateRequest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -19,13 +21,16 @@ public class AuthService {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    private final UserService userService;
 
     public AuthService(UserRepository userRepository, RoleRepository roleRepository,
-                       PasswordEncoder passwordEncoder, JwtTokenProvider jwtTokenProvider) {
+                       PasswordEncoder passwordEncoder, JwtTokenProvider jwtTokenProvider,
+                       UserService userService) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
+        this.userService = userService;
     }
 
     @Transactional
@@ -33,17 +38,19 @@ public class AuthService {
         if (!request.password().equals(request.confirmPassword())) {
             throw ApiException.badRequest("两次输入的密码不一致");
         }
-        if (userRepository.existsByUsernameAndDeletedFalse(request.username())) {
-            throw ApiException.conflict("用户名已存在");
-        }
+        freeDeletedUsernameOrFail(request.username());
         SysRole newUserRole = roleRepository.findByRoleCode("ROLE_NEW_USER")
                 .orElseThrow(() -> ApiException.notFound("默认角色不存在"));
         SysUser user = new SysUser();
         user.setUsername(request.username());
-        user.setDisplayName(request.username());
+        user.setDisplayName(request.displayName() == null || request.displayName().isBlank() ? request.username() : request.displayName());
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         user.getRoles().add(newUserRole);
-        return UserView.from(userRepository.save(user));
+        try {
+            return UserView.from(userRepository.save(user));
+        } catch (DataIntegrityViolationException ex) {
+            throw ApiException.conflict("用户名已存在");
+        }
     }
 
     public LoginResponse login(String username, String password) {
@@ -84,6 +91,10 @@ public class AuthService {
         return UserView.from(requireUser());
     }
 
+    public UserView updateProfile(SysUser user, UserUpdateRequest request) {
+        return userService.update(user.getId(), request, user);
+    }
+
     public void requireAnyPermission(SysUser user, Collection<String> requiredPermissions) {
         if (requiredPermissions == null || requiredPermissions.isEmpty()) {
             return;
@@ -100,5 +111,15 @@ public class AuthService {
         return user.getRoles().stream()
                 .flatMap(role -> role.getPermissions().stream())
                 .anyMatch(permission -> permission.getPermissionCode().equals(permissionCode));
+    }
+
+    private void freeDeletedUsernameOrFail(String username) {
+        userRepository.findByUsername(username).ifPresent(existing -> {
+            if (!existing.isDeleted()) {
+                throw ApiException.conflict("用户名已存在");
+            }
+            existing.setUsername("deleted#" + existing.getId());
+            userRepository.saveAndFlush(existing);
+        });
     }
 }

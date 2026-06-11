@@ -38,6 +38,9 @@ api.interceptors.response.use(
         window.location.href = `/login?redirect=${redirect}`
       }
     }
+    if (error.response?.status === 403) {
+      window.dispatchEvent(new CustomEvent('auth-permissions-stale'))
+    }
     return Promise.reject(new Error(message))
   }
 )

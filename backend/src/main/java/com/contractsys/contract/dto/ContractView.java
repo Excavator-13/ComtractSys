@@ -20,6 +20,8 @@ public record ContractView(
         ContractStatus status,
         LocalDate signedDate,
         String signInfo,
+        int currentRound,
+        String returnTargetStage,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
@@ -38,9 +40,10 @@ public record ContractView(
                 contract.getStatus(),
                 contract.getSignedDate(),
                 contract.getSignInfo(),
+                contract.getCurrentRound(),
+                contract.getReturnTargetStage(),
                 contract.getCreatedAt(),
                 contract.getUpdatedAt()
         );
     }
 }
-

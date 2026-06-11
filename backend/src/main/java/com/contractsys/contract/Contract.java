@@ -43,6 +43,12 @@ public class Contract {
     @Column(columnDefinition = "TEXT")
     private String signInfo;
 
+    @Column(nullable = false)
+    private int currentRound = 1;
+
+    @Column(length = 30)
+    private String returnTargetStage;
+
     @Version
     private int version;
 
@@ -77,6 +83,10 @@ public class Contract {
     public void setSignedDate(LocalDate signedDate) { this.signedDate = signedDate; }
     public String getSignInfo() { return signInfo; }
     public void setSignInfo(String signInfo) { this.signInfo = signInfo; }
+    public int getCurrentRound() { return currentRound; }
+    public void setCurrentRound(int currentRound) { this.currentRound = currentRound; }
+    public String getReturnTargetStage() { return returnTargetStage; }
+    public void setReturnTargetStage(String returnTargetStage) { this.returnTargetStage = returnTargetStage; }
     public int getVersion() { return version; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

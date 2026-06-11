@@ -306,21 +306,23 @@ class BoundaryIntegrationTest {
     @Test
     void approvalRequiresAllApprovalTasksToFinishAndSigningIsSingleAssignee() throws Exception {
         UserLogin operator = createOperatorUser();
+        UserLogin countersigner = createOperatorUser();
+        UserLogin firstApprover = createOperatorUser();
         UserLogin secondApprover = createOperatorUser();
+        UserLogin signer = createOperatorUser();
         Long customerId = createCustomer();
         Long contractId = createContract(customerId, operator.token());
-        Long adminUserId = currentUserId();
 
         mockMvc.perform(post("/api/v1/contracts/" + contractId + "/assign")
                         .header("Authorization", bearer())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(String.format("""
                                 {"countersignUserIds":[%d],"approvalUserIds":[%d,%d],"signUserId":%d}
-                                """, adminUserId, adminUserId, secondApprover.id(), adminUserId)))
+                                """, countersigner.id(), firstApprover.id(), secondApprover.id(), signer.id())))
                 .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/v1/contracts/" + contractId + "/countersign")
-                        .header("Authorization", bearer())
+                        .header("Authorization", "Bearer " + countersigner.token())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"opinion\":\"同意\"}"))
                 .andExpect(status().isOk())
@@ -339,7 +341,7 @@ class BoundaryIntegrationTest {
                 .andExpect(jsonPath("$.data.contract.status").value("FINALIZED"));
 
         mockMvc.perform(post("/api/v1/contracts/" + contractId + "/approve")
-                        .header("Authorization", bearer())
+                        .header("Authorization", "Bearer " + firstApprover.token())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"result\":\"APPROVED\",\"opinion\":\"同意\"}"))
                 .andExpect(status().isOk())
@@ -353,9 +355,9 @@ class BoundaryIntegrationTest {
                 .andExpect(jsonPath("$.data.contract.status").value("APPROVED"));
 
         mockMvc.perform(post("/api/v1/contracts/" + contractId + "/sign")
-                        .header("Authorization", bearer())
+                        .header("Authorization", "Bearer " + signer.token())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"signInfo\":\"管理员签订\",\"signedDate\":\"2026-05-21\"}"))
+                        .content("{\"signInfo\":\"签订完成\",\"signedDate\":\"2026-05-21\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.contract.status").value("SIGNED"));
     }
@@ -464,6 +466,64 @@ class BoundaryIntegrationTest {
                         .param("customerId", customerId.toString()))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("contracts_")));
+    }
+
+    @Test
+    void contractTemplateFileManagementCoversUploadDownloadDisableAndInvalidFiles() throws Exception {
+        String templateName = unique("资产模板");
+        MockMultipartFile pdf = new MockMultipartFile(
+                "file", "template.pdf", "application/pdf", "%PDF-1.4\n模板内容".getBytes());
+
+        String uploadResponse = mockMvc.perform(multipart("/api/v1/contract-templates")
+                        .file(pdf)
+                        .param("name", templateName)
+                        .param("description", "模板说明")
+                        .param("content", "模板摘要")
+                        .header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.originalName").value("template.pdf"))
+                .andExpect(jsonPath("$.data.enabled").value(true))
+                .andReturn().getResponse().getContentAsString();
+        long templateId = objectMapper.readTree(uploadResponse).path("data").path("id").asLong();
+
+        mockMvc.perform(get("/api/v1/contract-templates/manage")
+                        .header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.id == " + templateId + ")].name").value(templateName));
+
+        mockMvc.perform(get("/api/v1/contract-templates/" + templateId + "/download")
+                        .header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("template.pdf")));
+
+        mockMvc.perform(patch("/api/v1/contract-templates/" + templateId + "/enabled")
+                        .param("enabled", "false")
+                        .header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.enabled").value(false));
+
+        String enabledList = mockMvc.perform(get("/api/v1/contract-templates")
+                        .header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        for (JsonNode template : objectMapper.readTree(enabledList).path("data")) {
+            if (template.path("id").asLong() == templateId) {
+                throw new AssertionError("停用模板不应出现在起草参考列表");
+            }
+        }
+
+        MockMultipartFile unsupported = new MockMultipartFile(
+                "file", "bad.exe", "application/octet-stream", "x".getBytes());
+        mockMvc.perform(multipart("/api/v1/contract-templates")
+                        .file(unsupported)
+                        .param("name", unique("非法模板"))
+                        .header("Authorization", bearer()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(40000));
+
+        mockMvc.perform(delete("/api/v1/contract-templates/" + templateId)
+                        .header("Authorization", bearer()))
+                .andExpect(status().isOk());
     }
 
     @Test

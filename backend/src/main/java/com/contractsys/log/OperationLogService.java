@@ -7,6 +7,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -29,18 +31,22 @@ public class OperationLogService {
         operationLogRepository.save(log);
     }
 
-    public Page<OperationLog> list(String keyword, String module, int page, int size) {
+    public Page<OperationLog> list(String keyword, String module, LocalDate startDate, LocalDate endDate, int page, int size) {
         return operationLogRepository.search(
                 keyword == null ? "" : keyword,
                 module == null ? "" : module,
+                startDate == null ? null : startDate.atStartOfDay(),
+                exclusiveEnd(endDate),
                 PageRequests.of(page, size)
         );
     }
 
-    public byte[] export(String keyword, String module) {
+    public byte[] export(String keyword, String module, LocalDate startDate, LocalDate endDate) {
         List<OperationLog> logs = operationLogRepository.search(
                 keyword == null ? "" : keyword,
                 module == null ? "" : module,
+                startDate == null ? null : startDate.atStartOfDay(),
+                exclusiveEnd(endDate),
                 org.springframework.data.domain.PageRequest.of(0, 10000)
         ).getContent();
         StringBuilder sb = new StringBuilder();
@@ -62,6 +68,10 @@ public class OperationLogService {
         return user.getDisplayName() == null || user.getDisplayName().isBlank()
                 ? user.getUsername()
                 : user.getDisplayName();
+    }
+
+    private LocalDateTime exclusiveEnd(LocalDate endDate) {
+        return endDate == null ? null : endDate.plusDays(1).atStartOfDay();
     }
 
 }

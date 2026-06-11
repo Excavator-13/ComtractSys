@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface UserRepository extends JpaRepository<SysUser, Long> {
+    Optional<SysUser> findByUsername(String username);
     Optional<SysUser> findByUsernameAndDeletedFalse(String username);
     boolean existsByUsernameAndDeletedFalse(String username);
     Page<SysUser> findByDeletedFalse(Pageable pageable);

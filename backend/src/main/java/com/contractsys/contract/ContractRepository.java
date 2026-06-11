@@ -45,13 +45,12 @@ public interface ContractRepository extends JpaRepository<Contract, Long> {
     @Query("SELECT DISTINCT c FROM Contract c LEFT JOIN ContractTask t ON t.contract = c WHERE c.deleted=false " +
            "AND (c.name LIKE %:keyword% OR c.contractNo LIKE %:keyword% OR c.customer.name LIKE %:keyword%) " +
            "AND (:status IS NULL OR c.status = :status) " +
-           "AND (c.drafter.id = :userId OR t.assignee.id = :userId OR (:includeDraftForAssigner = true AND c.status = :draftStatus)) " +
+           "AND (c.drafter.id = :userId OR t.assignee.id = :userId OR :includeAllForAssigner = true) " +
            "ORDER BY c.createdAt DESC")
     Page<Contract> searchRelated(@Param("keyword") String keyword,
                                   @Param("status") ContractStatus status,
                                   @Param("userId") Long userId,
-                                  @Param("includeDraftForAssigner") boolean includeDraftForAssigner,
-                                  @Param("draftStatus") ContractStatus draftStatus,
+                                  @Param("includeAllForAssigner") boolean includeAllForAssigner,
                                   Pageable pageable);
 
     @Query("SELECT DISTINCT c FROM Contract c LEFT JOIN ContractTask t ON t.contract = c WHERE c.deleted=false " +
@@ -63,7 +62,7 @@ public interface ContractRepository extends JpaRepository<Contract, Long> {
            "AND (:beginTo IS NULL OR c.beginDate <= :beginTo) " +
            "AND (:endFrom IS NULL OR c.endDate >= :endFrom) " +
            "AND (:endTo IS NULL OR c.endDate <= :endTo) " +
-           "AND (c.drafter.id = :userId OR t.assignee.id = :userId OR (:includeDraftForAssigner = true AND c.status = :draftStatus)) " +
+           "AND (c.drafter.id = :userId OR t.assignee.id = :userId OR :includeAllForAssigner = true) " +
            "ORDER BY c.createdAt DESC")
     Page<Contract> advancedSearchRelated(@Param("keyword") String keyword,
                                           @Param("status") ContractStatus status,
@@ -74,8 +73,7 @@ public interface ContractRepository extends JpaRepository<Contract, Long> {
                                           @Param("endFrom") LocalDate endFrom,
                                           @Param("endTo") LocalDate endTo,
                                           @Param("userId") Long userId,
-                                          @Param("includeDraftForAssigner") boolean includeDraftForAssigner,
-                                          @Param("draftStatus") ContractStatus draftStatus,
+                                          @Param("includeAllForAssigner") boolean includeAllForAssigner,
                                           Pageable pageable);
 
     @Query("SELECT h FROM ContractStateHistory h WHERE h.contract.deleted=false " +
@@ -96,11 +94,10 @@ public interface ContractRepository extends JpaRepository<Contract, Long> {
 
     @Query("SELECT c.status, COUNT(DISTINCT c) FROM Contract c LEFT JOIN ContractTask t ON t.contract = c " +
            "WHERE c.deleted=false " +
-           "AND (c.drafter.id = :userId OR t.assignee.id = :userId OR (:includeDraftForAssigner = true AND c.status = :draftStatus)) " +
+           "AND (c.drafter.id = :userId OR t.assignee.id = :userId OR :includeAllForAssigner = true) " +
            "GROUP BY c.status")
     List<Object[]> countRelatedByStatus(@Param("userId") Long userId,
-                                        @Param("includeDraftForAssigner") boolean includeDraftForAssigner,
-                                        @Param("draftStatus") ContractStatus draftStatus);
+                                        @Param("includeAllForAssigner") boolean includeAllForAssigner);
 
     @Query("SELECT year(c.createdAt), month(c.createdAt), COUNT(c) " +
            "FROM Contract c WHERE c.deleted=false GROUP BY year(c.createdAt), month(c.createdAt) " +

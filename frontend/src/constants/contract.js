@@ -1,0 +1,46 @@
+export const contractStatuses = [
+  { value: '', label: '全部状态' },
+  { value: 'DRAFT', label: '待分配' },
+  { value: 'ASSIGNED', label: '待会签' },
+  { value: 'COUNTERSIGNED', label: '待定稿' },
+  { value: 'FINALIZED', label: '待审批' },
+  { value: 'APPROVED', label: '待签订' },
+  { value: 'SIGNED', label: '已签订' },
+  { value: 'REJECTED', label: '已拒绝' },
+  { value: 'RETURNED', label: '已打回' },
+  { value: 'CANCELLED', label: '已取消' }
+]
+
+export const workflowSteps = [
+  { type: 'ASSIGN', label: '分配', status: 'DRAFT' },
+  { type: 'COUNTERSIGN', label: '会签', status: 'ASSIGNED' },
+  { type: 'FINALIZE', label: '定稿', status: 'COUNTERSIGNED' },
+  { type: 'APPROVAL', label: '审批', status: 'FINALIZED' },
+  { type: 'SIGN', label: '签订', status: 'APPROVED' }
+]
+
+export const taskOrder = { ASSIGN: 1, COUNTERSIGN: 2, FINALIZE: 3, APPROVAL: 4, SIGN: 5 }
+
+export function contractStatusLabel(status) {
+  return contractStatuses.find(item => item.value === status)?.label || status || '-'
+}
+
+export function taskLabel(taskType) {
+  return workflowSteps.find(item => item.type === taskType)?.label || taskType || '-'
+}
+
+export function taskStatusLabel(status) {
+  const map = { PENDING: '待处理', DONE: '已完成', REJECTED: '已拒绝/打回', SUPERSEDED: '已封存', WITHDRAWN: '已撤回' }
+  return map[status] || status || '-'
+}
+
+export function activeStepIndex(status) {
+  if (status === 'DRAFT') return 0
+  if (status === 'ASSIGNED') return 1
+  if (status === 'COUNTERSIGNED') return 2
+  if (status === 'FINALIZED') return 3
+  if (status === 'APPROVED') return 4
+  if (status === 'SIGNED') return 5
+  if (status === 'REJECTED' || status === 'RETURNED') return 3
+  return 0
+}

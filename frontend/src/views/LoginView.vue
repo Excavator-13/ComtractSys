@@ -7,7 +7,10 @@ import { useAuthStore } from '../stores/auth'
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
-const form = reactive({ username: 'admin', password: '123456' })
+const form = reactive({
+  username: import.meta.env.DEV ? 'admin' : '',
+  password: import.meta.env.DEV ? '123456' : ''
+})
 const error = ref('')
 const loading = ref(false)
 
@@ -33,6 +36,7 @@ async function login() {
         <p class="eyebrow">ContractSys</p>
         <h1>合同管理系统</h1>
         <p class="muted">登录后处理合同起草、会签、审批和签订流程。</p>
+        <p v-if="route.query.registered === '1'" class="success-msg">注册成功，请登录。</p>
       </div>
 
       <form class="login-form" @submit.prevent="login">

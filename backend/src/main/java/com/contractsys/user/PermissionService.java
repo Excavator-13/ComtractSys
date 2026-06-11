@@ -43,7 +43,7 @@ public class PermissionService {
     }
 
     public List<PermissionView> list() {
-        return permissionRepository.findAll().stream().map(PermissionView::from).toList();
+        return permissionRepository.findAll().stream().map(this::toView).toList();
     }
 
     @Transactional
@@ -57,7 +57,7 @@ public class PermissionService {
         permissionRepository.save(permission);
         eventPublisher.publishEvent(new OperationLogEvent(operator, "SYSTEM", "新增权限", "PERMISSION", permission.getId(),
                 permission.getPermissionCode()));
-        return PermissionView.from(permission);
+        return toView(permission);
     }
 
     @Transactional
@@ -71,7 +71,7 @@ public class PermissionService {
         permissionRepository.save(permission);
         eventPublisher.publishEvent(new OperationLogEvent(operator, "SYSTEM", "修改权限", "PERMISSION", permission.getId(),
                 permission.getPermissionCode()));
-        return PermissionView.from(permission);
+        return toView(permission);
     }
 
     @Transactional
@@ -94,5 +94,9 @@ public class PermissionService {
         permission.setModule(request.module());
         permission.setUrl(request.url());
         permission.setDescription(request.description());
+    }
+
+    private PermissionView toView(SysPermission permission) {
+        return PermissionView.from(permission, CORE_PERMISSION_CODES.contains(permission.getPermissionCode()));
     }
 }

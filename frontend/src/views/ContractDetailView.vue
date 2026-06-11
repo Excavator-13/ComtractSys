@@ -4,6 +4,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, UserCheck, Paperclip, Download, Trash2, Upload, RotateCcw, XCircle, Eye } from 'lucide-vue-next'
 import { api } from '../api'
 import { useAuthStore } from '../stores/auth'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import PipelineStepper from '../components/PipelineStepper.vue'
+import StatusBadge from '../components/StatusBadge.vue'
+import { contractStatusLabel, taskLabel, taskStatusLabel } from '../constants/contract'
 
 const route = useRoute()
 const router = useRouter()
@@ -13,12 +17,34 @@ const tasks = ref([])
 const attachments = ref([])
 const timeline = ref([])
 const versions = ref([])
-const users = ref([])
+const customers = ref([])
+const countersignUsers = ref([])
+const approvalUsers = ref([])
+const signUsers = ref([])
 const error = ref('')
 const success = ref('')
 const activeTab = ref('info')
 const uploading = ref(false)
+const savingEdit = ref(false)
 const hasPermission = (permission) => auth.permissions.includes(permission)
+
+const editForm = reactive({
+  name: '',
+  customerId: '',
+  beginDate: '',
+  endDate: '',
+  content: ''
+})
+
+const actionForm = reactive({
+  type: '',
+  opinion: '',
+  content: '',
+  signInfo: '',
+  signedDate: new Date().toISOString().slice(0, 10),
+  returnTarget: 'FINALIZE'
+})
+const confirmState = reactive({ show: false, title: '', message: '', action: null })
 
 const assignForm = reactive({
   countersignUserIds: [],
@@ -26,19 +52,23 @@ const assignForm = reactive({
   signUserId: ''
 })
 
-function statusLabel(s) {
-  const map = { DRAFT:'待分配', ASSIGNED:'待会签', COUNTERSIGNED:'待定稿', FINALIZED:'待审批', APPROVED:'待签订', SIGNED:'已签订', REJECTED:'已拒绝', CANCELLED:'已取消' }
-  return map[s] || s
+function returnTargetLabel(target) {
+  const map = { DRAFT: '重新起草', FINALIZE: '重新定稿' }
+  return map[target] || target || '-'
 }
 
-function taskLabel(t) {
-  const map = { ASSIGN:'分配', COUNTERSIGN:'会签', APPROVAL:'审批', FINALIZE:'定稿', SIGN:'签订' }
-  return map[t] || t
+function askConfirm(title, message, action) {
+  confirmState.title = title
+  confirmState.message = message
+  confirmState.action = action
+  confirmState.show = true
 }
 
-function taskStatusLabel(s) {
-  const map = { PENDING:'待处理', DONE:'已完成', REJECTED:'已拒绝' }
-  return map[s] || s
+async function confirmDialogAction() {
+  const action = confirmState.action
+  confirmState.show = false
+  confirmState.action = null
+  if (action) await action()
 }
 
 function fileSizeLabel(bytes) {
@@ -47,15 +77,49 @@ function fileSizeLabel(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
+function notifyTasksUpdated() {
+  window.dispatchEvent(new CustomEvent('tasks-updated'))
+}
+
+function fillEditForm() {
+  if (!contract.value) return
+  editForm.name = contract.value.name || ''
+  editForm.customerId = contract.value.customerId || ''
+  editForm.beginDate = contract.value.beginDate || ''
+  editForm.endDate = contract.value.endDate || ''
+  editForm.content = contract.value.content || ''
+}
+
+function openAction(type) {
+  actionForm.type = type
+  actionForm.opinion = ''
+  actionForm.content = contract.value?.content || ''
+  actionForm.signInfo = ''
+  actionForm.signedDate = new Date().toISOString().slice(0, 10)
+  actionForm.returnTarget = type === 'COUNTERSIGN' ? 'DRAFT' : 'FINALIZE'
+  activeTab.value = 'action'
+}
+
 async function loadDetail() {
   error.value = ''
   try {
     const res = await api.get(`/contracts/${route.params.id}`)
     contract.value = res.data.contract
     tasks.value = res.data.tasks || []
+    fillEditForm()
+    if (activeTab.value === 'action' && actionForm.type === 'FINALIZE') {
+      actionForm.content = contract.value?.content || ''
+    }
   } catch (err) {
     error.value = err.message
   }
+}
+
+async function loadCustomers() {
+  try {
+    const res = await api.get('/customers', { params: { page: 1, size: 500 } })
+    customers.value = res.data.records || []
+  } catch {}
 }
 
 async function loadAttachments() {
@@ -68,8 +132,14 @@ async function loadAttachments() {
 async function loadUsers() {
   if (!hasPermission('contract:assign')) return
   try {
-    const res = await api.get('/users/assignable')
-    users.value = res.data
+    const [countersignRes, approvalRes, signRes] = await Promise.all([
+      api.get('/users/assignable?permission=contract:countersign'),
+      api.get('/users/assignable?permission=contract:approve'),
+      api.get('/users/assignable?permission=contract:sign')
+    ])
+    countersignUsers.value = countersignRes.data
+    approvalUsers.value = approvalRes.data
+    signUsers.value = signRes.data
   } catch {}
 }
 
@@ -86,70 +156,176 @@ async function assign() {
     })
     success.value = '分配成功'
     await loadDetail()
+    notifyTasksUpdated()
     activeTab.value = 'info'
   } catch (err) {
     error.value = err.message
   }
 }
 
-async function doCountersign() {
-  const opinion = prompt('会签意见:')
-  if (!opinion) return
+async function saveEdit() {
+  if (!editForm.name || !editForm.customerId || !editForm.content) {
+    error.value = '请填写合同名称、客户和合同概述'
+    return
+  }
+  savingEdit.value = true
+  error.value = ''
   try {
-    await api.post(`/contracts/${route.params.id}/countersign`, { opinion })
+    await api.put(`/contracts/${route.params.id}`, {
+      name: editForm.name,
+      customerId: Number(editForm.customerId),
+      beginDate: editForm.beginDate,
+      endDate: editForm.endDate,
+      content: editForm.content
+    })
+    success.value = '合同已更新'
+    await loadDetail()
+    await loadVersions()
+    activeTab.value = 'info'
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    savingEdit.value = false
+  }
+}
+
+async function doCountersign() {
+  if (!actionForm.opinion) {
+    error.value = '请填写会签意见'
+    return
+  }
+  try {
+    await api.post(`/contracts/${route.params.id}/countersign`, { opinion: actionForm.opinion })
     success.value = '会签成功'
     await loadDetail()
+    notifyTasksUpdated()
+    activeTab.value = 'rollback'
   } catch (err) {
     error.value = err.message
   }
 }
 
 async function doFinalize() {
-  const content = prompt('定稿内容:', contract.value?.content || '')
-  if (!content) return
+  if (!actionForm.content) {
+    error.value = '请填写定稿后的合同概述'
+    return
+  }
   try {
-    await api.post(`/contracts/${route.params.id}/finalize`, { content })
+    await api.post(`/contracts/${route.params.id}/finalize`, { content: actionForm.content })
     success.value = '定稿成功'
     await loadDetail()
+    notifyTasksUpdated()
+    activeTab.value = 'rollback'
   } catch (err) {
     error.value = err.message
   }
 }
 
 async function doApprove(result) {
-  const opinion = prompt(result === 'APPROVED' ? '审批通过意见:' : '拒绝原因:')
-  if (!opinion) return
+  if (!actionForm.opinion) {
+    error.value = result === 'APPROVED' ? '请填写审批意见' : '请填写拒绝原因'
+    return
+  }
   try {
-    await api.post(`/contracts/${route.params.id}/approve`, { result, opinion })
+    await api.post(`/contracts/${route.params.id}/approve`, { result, opinion: actionForm.opinion })
     success.value = result === 'APPROVED' ? '审批通过' : '已拒绝'
     await loadDetail()
+    notifyTasksUpdated()
+    activeTab.value = 'rollback'
   } catch (err) {
     error.value = err.message
   }
 }
 
 async function doSign() {
-  const signInfo = prompt('签订信息:')
-  if (!signInfo) return
-  const signedDate = new Date().toISOString().slice(0, 10)
+  if (!actionForm.signInfo) {
+    error.value = '请填写签订信息'
+    return
+  }
   try {
-    await api.post(`/contracts/${route.params.id}/sign`, { signInfo, signedDate })
+    await api.post(`/contracts/${route.params.id}/sign`, { signInfo: actionForm.signInfo, signedDate: actionForm.signedDate })
     success.value = '签订成功'
     await loadDetail()
+    notifyTasksUpdated()
+    activeTab.value = 'rollback'
   } catch (err) {
     error.value = err.message
   }
 }
 
+async function doReturn(targetStage = actionForm.returnTarget) {
+  if (!actionForm.opinion) {
+    error.value = '请填写打回原因'
+    return
+  }
+  try {
+    await api.post(`/contracts/${route.params.id}/return`, { targetStage, opinion: actionForm.opinion })
+    success.value = '合同已打回'
+    await loadDetail()
+    await loadTimeline()
+    notifyTasksUpdated()
+    activeTab.value = 'rollback'
+  } catch (err) {
+    error.value = err.message
+  }
+}
+
+async function doResume() {
+  askConfirm('恢复流程', `确认按「${returnTargetLabel(contract.value?.returnTargetStage)}」恢复流程？`, async () => {
+  try {
+    await api.post(`/contracts/${route.params.id}/resume`)
+    success.value = '流程已恢复'
+    await loadDetail()
+    await loadTimeline()
+    notifyTasksUpdated()
+    activeTab.value = 'rollback'
+  } catch (err) {
+    error.value = err.message
+  }
+  })
+}
+
+async function doRecall() {
+  askConfirm('撤回合同', '确认撤回合同并回到待分配？', async () => {
+  try {
+    await api.post(`/contracts/${route.params.id}/recall`)
+    success.value = '合同已撤回'
+    await loadDetail()
+    await loadTimeline()
+    notifyTasksUpdated()
+    activeTab.value = 'rollback'
+  } catch (err) {
+    error.value = err.message
+  }
+  })
+}
+
+async function doWithdrawTask() {
+  askConfirm('撤回任务', '确认撤回最近一次已处理任务？', async () => {
+  try {
+    await api.post(`/contracts/${route.params.id}/tasks/withdraw`)
+    success.value = '任务已撤回'
+    await loadDetail()
+    await loadTimeline()
+    notifyTasksUpdated()
+    activeTab.value = 'rollback'
+  } catch (err) {
+    error.value = err.message
+  }
+  })
+}
+
 async function doResubmit() {
-  if (!confirm('确认重新提交审批？所有审批人都需要重新审批，旧审批意见将被清空。')) return
+  askConfirm('重新提交审批', '确认重新提交审批？所有审批人都需要重新审批，旧审批意见会保留在历史轮次中。', async () => {
   try {
     await api.post(`/contracts/${route.params.id}/resubmit`)
     success.value = '已重新提交审批'
     await loadDetail()
+    notifyTasksUpdated()
   } catch (err) {
     error.value = err.message
   }
+  })
 }
 
 async function loadTimeline() {
@@ -167,14 +343,16 @@ async function loadVersions() {
 }
 
 async function doCancel() {
-  if (!confirm('确认取消该合同？取消后会关闭所有待办任务。')) return
+  askConfirm('取消合同', '确认取消该合同？取消后会关闭所有待办任务。', async () => {
   try {
     await api.post(`/contracts/${route.params.id}/cancel`)
     success.value = '合同已取消'
     await loadDetail()
+    notifyTasksUpdated()
   } catch (err) {
     error.value = err.message
   }
+  })
 }
 
 async function handleUpload(e) {
@@ -212,16 +390,20 @@ async function downloadAttachment(a) {
 }
 
 async function deleteAttachment(a) {
-  if (!confirm(`删除附件「${a.originalName}」？`)) return
+  askConfirm('删除附件', `删除附件「${a.originalName}」？`, async () => {
   try {
     await api.delete(`/attachments/${a.id}`)
     await loadAttachments()
   } catch (err) {
     error.value = err.message
   }
+  })
 }
 
-const assignableUsers = computed(() => users.value.filter(u => u.id !== contract.value?.drafterId))
+const excludeDrafter = (list) => list.filter(u => Number(u.id) !== Number(contract.value?.drafterId))
+const assignableCountersignUsers = computed(() => excludeDrafter(countersignUsers.value))
+const assignableApprovalUsers = computed(() => excludeDrafter(approvalUsers.value))
+const assignableSignUsers = computed(() => excludeDrafter(signUsers.value))
 const pendingTask = (type) => tasks.value.some(t => t.taskType === type && t.taskStatus === 'PENDING' && Number(t.assigneeId) === Number(auth.user?.id))
 const canAssignCurrent = computed(() => hasPermission('contract:assign') && contract.value?.status === 'DRAFT' && pendingTask('ASSIGN'))
 const canCountersignCurrent = computed(() => hasPermission('contract:countersign') && contract.value?.status === 'ASSIGNED' && pendingTask('COUNTERSIGN'))
@@ -231,6 +413,41 @@ const canSignCurrent = computed(() => hasPermission('contract:sign') && contract
 const canResubmitCurrent = computed(() => hasPermission('contract:update') && contract.value?.status === 'REJECTED' && Number(contract.value?.drafterId) === Number(auth.user?.id))
 const canCancelCurrent = computed(() => hasPermission('contract:delete') && !['SIGNED', 'CANCELLED'].includes(contract.value?.status))
 const canModifyAttachments = computed(() => hasPermission('contract:update') && contract.value?.status !== 'CANCELLED')
+const canEditCurrent = computed(() => hasPermission('contract:update') && Number(contract.value?.drafterId) === Number(auth.user?.id) && ['DRAFT', 'REJECTED', 'RETURNED'].includes(contract.value?.status))
+const canReturnCurrent = computed(() =>
+  (canCountersignCurrent.value || canApproveCurrent.value || canSignCurrent.value) && contract.value?.status !== 'RETURNED'
+)
+const canResumeCurrent = computed(() => hasPermission('contract:update') && contract.value?.status === 'RETURNED' && Number(contract.value?.drafterId) === Number(auth.user?.id))
+const canRecallCurrent = computed(() => hasPermission('contract:update') && contract.value?.status === 'ASSIGNED' && Number(contract.value?.drafterId) === Number(auth.user?.id))
+const canWithdrawCurrent = computed(() => tasks.value.some(t =>
+  Number(t.assigneeId) === Number(auth.user?.id) &&
+  Number(t.round || 1) === Number(contract.value?.currentRound || 1) &&
+  ['DONE', 'REJECTED'].includes(t.taskStatus)
+))
+const taskRounds = computed(() => {
+  const groups = new Map()
+  tasks.value.forEach(task => {
+    const round = task.round || 1
+    if (!groups.has(round)) groups.set(round, [])
+    groups.get(round).push(task)
+  })
+  return Array.from(groups.entries())
+    .sort((a, b) => b[0] - a[0])
+    .map(([round, roundTasks]) => ({
+      round,
+      current: round === (contract.value?.currentRound || 1),
+      tasks: roundTasks.sort((a, b) => {
+        const order = { ASSIGN: 1, COUNTERSIGN: 2, FINALIZE: 3, APPROVAL: 4, SIGN: 5 }
+        return (order[a.taskType] || 99) - (order[b.taskType] || 99)
+      })
+    }))
+})
+const countersignOpinions = computed(() => tasks.value.filter(t => t.taskType === 'COUNTERSIGN' && t.opinion))
+const approvalOpinions = computed(() => tasks.value.filter(t => t.taskType === 'APPROVAL' && t.opinion))
+const actionTitle = computed(() => {
+  const map = { COUNTERSIGN: '会签处理', FINALIZE: '定稿处理', APPROVAL: '审批处理', SIGN: '签订处理' }
+  return map[actionForm.type] || '流程处理'
+})
 
 function userName(user) {
   return user.displayName || user.username
@@ -248,11 +465,12 @@ async function previewAttachment(a) {
 }
 
 function selectedUsers(field) {
-  return assignableUsers.value.filter(u => assignForm[field].includes(u.id))
+  const source = field === 'countersignUserIds' ? assignableCountersignUsers.value : assignableApprovalUsers.value
+  return source.filter(u => assignForm[field].includes(u.id))
 }
 
 function selectedSignUser() {
-  return assignableUsers.value.find(u => u.id === assignForm.signUserId)
+  return assignableSignUsers.value.find(u => u.id === assignForm.signUserId)
 }
 
 function toggleUser(field, userId) {
@@ -273,8 +491,16 @@ function canPreview(a) {
 }
 
 onMounted(() => {
-  if (route.query.tab) activeTab.value = route.query.tab
+  if (route.query.edit === '1') activeTab.value = 'edit'
+  else if (route.query.tab === 'assign') activeTab.value = 'assign'
+  else if (route.query.tab === 'countersign') { actionForm.type = 'COUNTERSIGN'; actionForm.returnTarget = 'DRAFT'; activeTab.value = 'action' }
+  else if (route.query.tab === 'finalize') { actionForm.type = 'FINALIZE'; activeTab.value = 'action' }
+  else if (route.query.tab === 'approve') { actionForm.type = 'APPROVAL'; actionForm.returnTarget = 'FINALIZE'; activeTab.value = 'action' }
+  else if (route.query.tab === 'sign') { actionForm.type = 'SIGN'; actionForm.returnTarget = 'FINALIZE'; activeTab.value = 'action' }
+  else if (route.query.tab === 'rollback') activeTab.value = 'rollback'
+  else if (route.query.tab) activeTab.value = 'info'
   loadDetail()
+  loadCustomers()
   loadUsers()
   loadAttachments()
   loadTimeline()
@@ -284,7 +510,7 @@ onMounted(() => {
 
 <template>
   <div class="narrow">
-    <button class="secondary" style="margin-bottom:16px" @click="router.push('/contracts')">
+    <button class="secondary" style="margin-bottom:16px" @click="router.back()">
       <ArrowLeft :size="16" /> 返回合同列表
     </button>
 
@@ -294,18 +520,23 @@ onMounted(() => {
     <div v-if="contract" class="panel">
       <div class="section-title">
         <h2>{{ contract.name }}</h2>
-        <span class="status" :class="'status-' + contract.status?.toLowerCase()">{{ statusLabel(contract.status) }}</span>
+        <StatusBadge :value="contract.status" />
       </div>
+
+      <PipelineStepper :contract="contract" :tasks="tasks" />
 
       <div class="tabs">
         <button :class="{ selected: activeTab === 'info' }" @click="activeTab = 'info'">基础信息</button>
         <button :class="{ selected: activeTab === 'tasks' }" @click="activeTab = 'tasks'">流程任务</button>
         <button :class="{ selected: activeTab === 'timeline' }" @click="activeTab = 'timeline'">流程时间线</button>
         <button :class="{ selected: activeTab === 'versions' }" @click="activeTab = 'versions'">版本历史</button>
+        <button :class="{ selected: activeTab === 'rollback' }" @click="activeTab = 'rollback'">回退模型</button>
+        <button v-if="canCountersignCurrent || canFinalizeCurrent || canApproveCurrent || canSignCurrent" :class="{ selected: activeTab === 'action' }" @click="openAction(canCountersignCurrent ? 'COUNTERSIGN' : canFinalizeCurrent ? 'FINALIZE' : canApproveCurrent ? 'APPROVAL' : 'SIGN')">当前处理</button>
         <button :class="{ selected: activeTab === 'attachments' }" @click="activeTab = 'attachments'">
           附件 ({{ attachments.length }})
         </button>
         <button v-if="canAssignCurrent" :class="{ selected: activeTab === 'assign' }" @click="activeTab = 'assign'">分配人员</button>
+        <button v-if="canEditCurrent" :class="{ selected: activeTab === 'edit' }" @click="activeTab = 'edit'">编辑合同</button>
       </div>
 
       <div v-if="activeTab === 'info'" class="tab-content">
@@ -313,7 +544,7 @@ onMounted(() => {
           <div><dt>合同编号</dt><dd>{{ contract.contractNo }}</dd></div>
           <div><dt>合同名称</dt><dd>{{ contract.name }}</dd></div>
           <div><dt>客户</dt><dd>{{ contract.customerName }}</dd></div>
-          <div><dt>状态</dt><dd><span class="status" :class="'status-' + contract.status?.toLowerCase()">{{ statusLabel(contract.status) }}</span></dd></div>
+          <div><dt>状态</dt><dd><StatusBadge :value="contract.status" /></dd></div>
           <div><dt>起草人</dt><dd>{{ contract.drafterName }}</dd></div>
           <div><dt>开始日期</dt><dd>{{ contract.beginDate }}</dd></div>
           <div><dt>结束日期</dt><dd>{{ contract.endDate }}</dd></div>
@@ -321,7 +552,7 @@ onMounted(() => {
           <div v-if="contract.signInfo"><dt>签订信息</dt><dd>{{ contract.signInfo }}</dd></div>
         </dl>
         <div style="margin-top:16px">
-          <h4>合同内容</h4>
+          <h4>合同概述</h4>
           <pre class="content-box">{{ contract.content }}</pre>
         </div>
 
@@ -329,17 +560,122 @@ onMounted(() => {
           <button v-if="canAssignCurrent" @click="activeTab = 'assign'">
             <UserCheck :size="14" /> 分配人员
           </button>
-          <button v-if="canFinalizeCurrent" @click="doFinalize">定稿</button>
+          <button v-if="canEditCurrent" @click="activeTab = 'edit'">编辑合同</button>
+          <button v-if="canFinalizeCurrent" @click="openAction('FINALIZE')">定稿</button>
           <button v-if="canResubmitCurrent" @click="doResubmit">
             <RotateCcw :size="14" /> 重新提交审批
           </button>
-          <button v-if="canApproveCurrent" @click="doApprove('APPROVED')">审批通过</button>
-          <button v-if="canApproveCurrent" @click="doApprove('REJECTED')">审批拒绝</button>
-          <button v-if="canCountersignCurrent" @click="doCountersign">会签</button>
-          <button v-if="canSignCurrent" @click="doSign">签订</button>
+          <button v-if="canApproveCurrent" @click="openAction('APPROVAL')">审批</button>
+          <button v-if="canCountersignCurrent" @click="openAction('COUNTERSIGN')">会签</button>
+          <button v-if="canSignCurrent" @click="openAction('SIGN')">签订</button>
+          <button v-if="canResumeCurrent" @click="doResume">
+            <RotateCcw :size="14" /> 恢复流程
+          </button>
+          <button v-if="canRecallCurrent" @click="doRecall">撤回合同</button>
+          <button v-if="canWithdrawCurrent" @click="doWithdrawTask">撤回任务</button>
           <button v-if="canCancelCurrent" @click="doCancel" style="color:#b42318">
             <XCircle :size="14" /> 取消合同
           </button>
+        </div>
+      </div>
+
+      <div v-if="activeTab === 'edit' && canEditCurrent" class="tab-content">
+        <div class="form-grid">
+          <label>合同名称<input v-model="editForm.name" required /></label>
+          <label>客户
+            <select v-model="editForm.customerId" required>
+              <option value="" disabled>选择客户</option>
+              <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+          </label>
+          <label>开始日期<input v-model="editForm.beginDate" type="date" required /></label>
+          <label>结束日期<input v-model="editForm.endDate" type="date" required /></label>
+          <label class="full">合同概述<textarea v-model="editForm.content" rows="8" required /></label>
+        </div>
+        <div class="row-actions" style="margin-top:16px">
+          <button class="primary" :disabled="savingEdit" @click="saveEdit">{{ savingEdit ? '保存中...' : '保存修改' }}</button>
+          <button class="secondary" type="button" @click="fillEditForm(); activeTab = 'info'">取消</button>
+        </div>
+      </div>
+
+      <div v-if="activeTab === 'action'" class="tab-content">
+        <div class="assign-section-head">
+          <h3>{{ actionTitle }}</h3>
+          <span class="muted">{{ contract.contractNo }} · 第 {{ contract.currentRound || 1 }} 轮</span>
+        </div>
+
+        <div class="detail-grid" style="margin:16px 0">
+          <div><dt>合同名称</dt><dd>{{ contract.name }}</dd></div>
+          <div><dt>客户</dt><dd>{{ contract.customerName }}</dd></div>
+          <div><dt>状态</dt><dd><StatusBadge :value="contract.status" /></dd></div>
+          <div><dt>起草人</dt><dd>{{ contract.drafterName }}</dd></div>
+        </div>
+
+        <section v-if="countersignOpinions.length" class="version-item" style="margin-bottom:14px">
+          <div class="assign-section-head"><h3>会签意见</h3></div>
+          <p v-for="t in countersignOpinions" :key="'cs-op-' + t.id" class="muted">
+            {{ t.assigneeName }} · 第 {{ t.round || 1 }} 轮：{{ t.opinion }}
+          </p>
+        </section>
+
+        <section v-if="approvalOpinions.length && (actionForm.type === 'SIGN' || actionForm.type === 'APPROVAL')" class="version-item" style="margin-bottom:14px">
+          <div class="assign-section-head"><h3>审批意见</h3></div>
+          <p v-for="t in approvalOpinions" :key="'ap-op-' + t.id" class="muted">
+            {{ t.assigneeName }} · 第 {{ t.round || 1 }} 轮：{{ t.opinion }}
+          </p>
+        </section>
+
+        <div style="margin-bottom:14px">
+          <h4>合同概述</h4>
+          <textarea v-if="actionForm.type === 'FINALIZE'" v-model="actionForm.content" rows="8" />
+          <pre v-else class="content-box">{{ contract.content }}</pre>
+        </div>
+
+        <div v-if="attachments.length" style="margin-bottom:14px">
+          <h4>附件</h4>
+          <div class="attachment-list">
+            <div v-for="a in attachments" :key="'action-att-' + a.id" class="attachment-item">
+              <Paperclip :size="16" />
+              <span>{{ a.originalName }}</span>
+              <small>{{ fileSizeLabel(a.fileSize) }}</small>
+              <button class="icon mini" type="button" @click="downloadAttachment(a)" title="下载附件">
+                <Download :size="14" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="actionForm.type === 'COUNTERSIGN' || actionForm.type === 'APPROVAL'" class="form-grid single">
+          <label class="full">{{ actionForm.type === 'COUNTERSIGN' ? '会签意见' : '审批意见' }}
+            <textarea v-model="actionForm.opinion" rows="5" required />
+          </label>
+        </div>
+
+        <div v-if="actionForm.type === 'SIGN'" class="form-grid">
+          <label>签订日期<input v-model="actionForm.signedDate" type="date" required /></label>
+          <label class="full">签订信息<textarea v-model="actionForm.signInfo" rows="5" required /></label>
+        </div>
+
+        <div v-if="canReturnCurrent" class="form-grid single" style="margin-top:10px">
+          <label class="full">打回目标
+            <select v-model="actionForm.returnTarget">
+              <option v-if="actionForm.type !== 'COUNTERSIGN'" value="FINALIZE">重新定稿</option>
+              <option value="DRAFT">重新起草</option>
+            </select>
+          </label>
+          <label v-if="actionForm.type === 'SIGN'" class="full">打回原因
+            <textarea v-model="actionForm.opinion" rows="4" />
+          </label>
+        </div>
+
+        <div class="row-actions" style="margin-top:16px">
+          <button v-if="actionForm.type === 'COUNTERSIGN'" class="primary" @click="doCountersign">提交会签</button>
+          <button v-if="actionForm.type === 'FINALIZE'" class="primary" @click="doFinalize">提交定稿</button>
+          <button v-if="actionForm.type === 'APPROVAL'" class="primary" @click="doApprove('APPROVED')">审批通过</button>
+          <button v-if="actionForm.type === 'APPROVAL'" @click="doApprove('REJECTED')">审批拒绝</button>
+          <button v-if="actionForm.type === 'SIGN'" class="primary" @click="doSign">提交签订</button>
+          <button v-if="canReturnCurrent" style="color:#b42318" @click="doReturn()">打回</button>
+          <button class="secondary" type="button" @click="activeTab = 'info'">取消</button>
         </div>
       </div>
 
@@ -369,7 +705,7 @@ onMounted(() => {
           <li v-for="item in timeline" :key="item.id">
             <div class="timeline-dot"></div>
             <div>
-              <strong>{{ statusLabel(item.fromStatus) }} -> {{ statusLabel(item.toStatus) }}</strong>
+              <strong>{{ contractStatusLabel(item.fromStatus) }} -> {{ contractStatusLabel(item.toStatus) }}</strong>
               <p>{{ item.remark || '-' }}</p>
               <span>{{ item.operatorName }} · {{ item.createdAt?.slice(0, 16) }}</span>
             </div>
@@ -387,6 +723,36 @@ onMounted(() => {
             </div>
             <p class="muted">{{ v.remark }}</p>
             <pre class="content-box">{{ v.content }}</pre>
+          </article>
+        </div>
+      </div>
+
+      <div v-if="activeTab === 'rollback'" class="tab-content">
+        <div class="detail-grid" style="margin-bottom:16px">
+          <div><dt>当前轮次</dt><dd>第 {{ contract.currentRound || 1 }} 轮</dd></div>
+          <div><dt>回退目标</dt><dd>{{ returnTargetLabel(contract.returnTargetStage) }}</dd></div>
+          <div><dt>当前状态</dt><dd><StatusBadge :value="contract.status" /></dd></div>
+        </div>
+
+        <div v-if="taskRounds.length === 0" class="muted" style="text-align:center;padding:24px">暂无轮次任务</div>
+        <div v-else class="version-list">
+          <article v-for="round in taskRounds" :key="round.round" class="version-item">
+            <div class="assign-section-head">
+              <h3>第 {{ round.round }} 轮</h3>
+              <span class="status" :class="round.current ? 'status-assigned' : ''">{{ round.current ? '当前轮' : '历史轮' }}</span>
+            </div>
+            <table>
+              <thead><tr><th>环节</th><th>处理人</th><th>状态</th><th>意见/原因</th><th>时间</th></tr></thead>
+              <tbody>
+                <tr v-for="t in round.tasks" :key="'round-' + round.round + '-' + t.id">
+                  <td>{{ taskLabel(t.taskType) }}</td>
+                  <td>{{ t.assigneeName }}</td>
+                  <td>{{ taskStatusLabel(t.taskStatus) }}</td>
+                  <td>{{ t.opinion || '-' }}</td>
+                  <td>{{ t.operatedAt?.slice(0, 16) || '-' }}</td>
+                </tr>
+              </tbody>
+            </table>
           </article>
         </div>
       </div>
@@ -441,7 +807,7 @@ onMounted(() => {
                 </button>
               </div>
               <div class="checkbox-list">
-                <label v-for="u in assignableUsers" :key="'counter-' + u.id" class="check-option">
+                <label v-for="u in assignableCountersignUsers" :key="'counter-' + u.id" class="check-option">
                   <input
                     type="checkbox"
                     :checked="assignForm.countersignUserIds.includes(u.id)"
@@ -473,7 +839,7 @@ onMounted(() => {
                 </button>
               </div>
               <div class="checkbox-list">
-                <label v-for="u in assignableUsers" :key="'approval-' + u.id" class="check-option">
+                <label v-for="u in assignableApprovalUsers" :key="'approval-' + u.id" class="check-option">
                   <input
                     type="checkbox"
                     :checked="assignForm.approvalUserIds.includes(u.id)"
@@ -499,7 +865,7 @@ onMounted(() => {
                 </button>
               </div>
               <div class="checkbox-list">
-                <label v-for="u in assignableUsers" :key="'sign-' + u.id" class="check-option">
+                <label v-for="u in assignableSignUsers" :key="'sign-' + u.id" class="check-option">
                   <input
                     type="radio"
                     name="signUser"
@@ -516,5 +882,12 @@ onMounted(() => {
         <button class="primary" @click="assign">确认分配</button>
       </div>
     </div>
+    <ConfirmDialog
+      :show="confirmState.show"
+      :title="confirmState.title"
+      :message="confirmState.message"
+      @confirm="confirmDialogAction"
+      @cancel="confirmState.show = false"
+    />
   </div>
 </template>

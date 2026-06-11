@@ -19,6 +19,17 @@ public class ContractTemplate {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
 
+    @Column(length = 120)
+    private String originalName;
+
+    @Column(length = 120)
+    private String storedName;
+
+    @Column(length = 100)
+    private String contentType;
+
+    private Long fileSize;
+
     @Column(nullable = false)
     private boolean enabled = true;
 
@@ -38,6 +49,14 @@ public class ContractTemplate {
     public void setDescription(String description) { this.description = description; }
     public String getContent() { return content; }
     public void setContent(String content) { this.content = content; }
+    public String getOriginalName() { return originalName; }
+    public void setOriginalName(String originalName) { this.originalName = originalName; }
+    public String getStoredName() { return storedName; }
+    public void setStoredName(String storedName) { this.storedName = storedName; }
+    public String getContentType() { return contentType; }
+    public void setContentType(String contentType) { this.contentType = contentType; }
+    public Long getFileSize() { return fileSize; }
+    public void setFileSize(Long fileSize) { this.fileSize = fileSize; }
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
     public LocalDateTime getCreatedAt() { return createdAt; }

@@ -54,7 +54,7 @@ class ContractQueryServiceTest {
         when(contractRepository.advancedSearchRelated(
                 anyString(), nullable(ContractStatus.class), nullable(Long.class), nullable(Long.class),
                 nullable(LocalDate.class), nullable(LocalDate.class), nullable(LocalDate.class), nullable(LocalDate.class),
-                eq(7L), anyBoolean(), eq(ContractStatus.DRAFT), any(Pageable.class)
+                eq(7L), anyBoolean(), any(Pageable.class)
         )).thenReturn(new PageImpl<>(List.of()));
 
         service.exportAdvancedList("", "", null, null, null, null, null, null, user);
@@ -63,7 +63,7 @@ class ContractQueryServiceTest {
         verify(contractRepository).advancedSearchRelated(
                 anyString(), nullable(ContractStatus.class), nullable(Long.class), nullable(Long.class),
                 nullable(LocalDate.class), nullable(LocalDate.class), nullable(LocalDate.class), nullable(LocalDate.class),
-                eq(7L), anyBoolean(), eq(ContractStatus.DRAFT), pageable.capture()
+                eq(7L), anyBoolean(), pageable.capture()
         );
         assertEquals(10000, pageable.getValue().getPageSize());
     }

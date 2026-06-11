@@ -229,6 +229,34 @@ class ContractWorkflowTraversalIntegrationTest {
         assertStatus(id, "APPROVED");
     }
 
+    @Test
+    void returnToFinalizeCreatesNewRoundWithoutOverwritingHistory() throws Exception {
+        long id = driveToFinalized(List.of(cs1Id), List.of(ap1Id, ap2Id), signerId, "多轮打回合同" + suffix);
+
+        opOk(ap1Token, id, "return", "{\"targetStage\":\"FINALIZE\",\"opinion\":\"付款条款需调整\"}");
+        assertStatus(id, "RETURNED");
+
+        JsonNode returnedDetail = getJson("/api/v1/contracts/" + id, adminToken).get("data");
+        assertThat(returnedDetail.get("contract").get("currentRound").asInt()).isEqualTo(1);
+        assertThat(returnedDetail.get("contract").get("returnTargetStage").asText()).isEqualTo("FINALIZE");
+        assertThat(taskOpinions(returnedDetail)).anyMatch(opinion -> opinion.contains("付款条款需调整"));
+        assertThat(myTaskTypesForContract(ap2Token, id)).isEmpty();
+
+        opOk(drafterToken, id, "resume", null);
+        assertStatus(id, "COUNTERSIGNED");
+        assertThat(myTaskTypesForContract(drafterToken, id)).contains("FINALIZE");
+
+        opOk(drafterToken, id, "finalize", "{\"content\":\"第二轮定稿正文\"}");
+        assertStatus(id, "FINALIZED");
+        assertThat(myTaskTypesForContract(ap1Token, id)).contains("APPROVAL");
+        assertThat(myTaskTypesForContract(ap2Token, id)).contains("APPROVAL");
+
+        JsonNode secondRoundDetail = getJson("/api/v1/contracts/" + id, adminToken).get("data");
+        assertThat(secondRoundDetail.get("contract").get("currentRound").asInt()).isEqualTo(2);
+        assertThat(taskRounds(secondRoundDetail)).contains(1, 2);
+        assertThat(taskOpinions(secondRoundDetail)).anyMatch(opinion -> opinion.contains("付款条款需调整"));
+    }
+
     // ---------- 场景 3：每个状态下的非法转换矩阵 ----------
 
     @Test
@@ -566,6 +594,27 @@ class ContractWorkflowTraversalIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private List<Integer> taskRounds(JsonNode detail) {
+        List<Integer> rounds = new java.util.ArrayList<>();
+        for (JsonNode task : detail.get("tasks")) {
+            int round = task.hasNonNull("round") ? task.get("round").asInt() : 1;
+            if (!rounds.contains(round)) {
+                rounds.add(round);
+            }
+        }
+        return rounds;
+    }
+
+    private List<String> taskOpinions(JsonNode detail) {
+        List<String> opinions = new java.util.ArrayList<>();
+        for (JsonNode task : detail.get("tasks")) {
+            if (task.hasNonNull("opinion")) {
+                opinions.add(task.get("opinion").asText());
+            }
+        }
+        return opinions;
     }
 
     /** 走到 FINALIZED：create -> assign -> 全部会签 -> 定稿 */

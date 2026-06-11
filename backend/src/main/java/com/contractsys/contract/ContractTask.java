@@ -28,6 +28,9 @@ public class ContractTask {
     @Column(columnDefinition = "TEXT")
     private String opinion;
 
+    @Column(nullable = false)
+    private int round = 1;
+
     private LocalDateTime operatedAt;
     private LocalDateTime createdAt = LocalDateTime.now();
 
@@ -43,6 +46,8 @@ public class ContractTask {
     public void setAssignee(SysUser assignee) { this.assignee = assignee; }
     public String getOpinion() { return opinion; }
     public void setOpinion(String opinion) { this.opinion = opinion; }
+    public int getRound() { return round; }
+    public void setRound(int round) { this.round = round; }
     public LocalDateTime getOperatedAt() { return operatedAt; }
     public void setOperatedAt(LocalDateTime operatedAt) { this.operatedAt = operatedAt; }
     public LocalDateTime getCreatedAt() { return createdAt; }

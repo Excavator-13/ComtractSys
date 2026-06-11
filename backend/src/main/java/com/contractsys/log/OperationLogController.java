@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/api/v1/logs")
@@ -31,17 +32,21 @@ public class OperationLogController {
     @GetMapping
     public ApiResponse<PageResponse<OperationLog>> logs(@RequestParam(defaultValue = "") String keyword,
                                                         @RequestParam(defaultValue = "") String module,
+                                                        @RequestParam(required = false) LocalDate startDate,
+                                                        @RequestParam(required = false) LocalDate endDate,
                                                         @RequestParam(defaultValue = "1") int page,
                                                         @RequestParam(defaultValue = "10") int size,
                                                         @CurrentUser SysUser user) {
-        return ApiResponse.ok(PageResponse.from(operationLogService.list(keyword, module, page, size)));
+        return ApiResponse.ok(PageResponse.from(operationLogService.list(keyword, module, startDate, endDate, page, size)));
     }
 
     @GetMapping("/export")
     public ResponseEntity<Resource> exportLogs(@RequestParam(defaultValue = "") String keyword,
                                                @RequestParam(defaultValue = "") String module,
+                                               @RequestParam(required = false) LocalDate startDate,
+                                               @RequestParam(required = false) LocalDate endDate,
                                                @CurrentUser SysUser user) {
-        byte[] csv = operationLogService.export(keyword, module);
+        byte[] csv = operationLogService.export(keyword, module, startDate, endDate);
         Resource resource = new ByteArrayResource(csv);
         String filename = "logs_" + java.time.LocalDate.now() + ".csv";
         return ResponseEntity.ok()
