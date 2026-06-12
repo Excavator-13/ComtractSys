@@ -68,13 +68,11 @@ function Ensure-User {
     $list = (Invoke-Api -Method GET -Path "/users?keyword=$Username&page=1&size=100" -Token $Token).data.records
     $existing = $list | Where-Object { $_.username -eq $Username } | Select-Object -First 1
     if ($existing) {
-        Invoke-Api -Method PUT -Path "/users/$($existing.id)/roles" -Token $Token -Body @{ roleId = $RoleId } | Out-Null
+        Invoke-Api -Method PUT -Path "/users/$($existing.id)/roles" -Token $Token -Body @{ roleIds = @($RoleId) } | Out-Null
         Invoke-Api -Method PUT -Path "/users/$($existing.id)" -Token $Token -Body @{
-            username = $Username
             displayName = $DisplayName
             phone = $Phone
             email = $Email
-            roleId = $RoleId
         } | Out-Null
         Invoke-Api -Method PATCH -Path "/users/$($existing.id)/status" -Token $Token -Body @{ status = "ENABLED" } | Out-Null
         $userToken = Login $Username $DemoPassword
@@ -87,7 +85,7 @@ function Ensure-User {
         displayName = $DisplayName
         phone = $Phone
         email = $Email
-        roleId = $RoleId
+        roleIds = @($RoleId)
     }
     return [pscustomobject]@{ id = [long]$created.data.id; username = $Username; displayName = $DisplayName; token = (Login $Username $DemoPassword) }
 }
@@ -287,6 +285,43 @@ function Upload-Attachment {
     }
 }
 
+function Upload-Template {
+    param(
+        [string]$Name,
+        [string]$Description,
+        [string]$Summary,
+        [string]$FilePath,
+        [string]$ContentType,
+        [string]$Token
+    )
+
+    Add-Type -AssemblyName System.Net.Http
+    $client = [System.Net.Http.HttpClient]::new()
+    $fileStream = $null
+    $multipart = $null
+    try {
+        $client.DefaultRequestHeaders.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new("Bearer", $Token)
+        $multipart = [System.Net.Http.MultipartFormDataContent]::new()
+        $multipart.Add([System.Net.Http.StringContent]::new($Name, [System.Text.Encoding]::UTF8), "name")
+        $multipart.Add([System.Net.Http.StringContent]::new($Description, [System.Text.Encoding]::UTF8), "description")
+        $multipart.Add([System.Net.Http.StringContent]::new($Summary, [System.Text.Encoding]::UTF8), "content")
+        $fileStream = [System.IO.File]::OpenRead($FilePath)
+        $fileContent = [System.Net.Http.StreamContent]::new($fileStream)
+        $fileContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse($ContentType)
+        $multipart.Add($fileContent, "file", [System.IO.Path]::GetFileName($FilePath))
+        $response = $client.PostAsync("$BaseUrl/contract-templates", $multipart).GetAwaiter().GetResult()
+        $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        if (-not $response.IsSuccessStatusCode) {
+            throw "Template upload failed for $Name : HTTP $([int]$response.StatusCode) $body"
+        }
+        return ($body | ConvertFrom-Json).data
+    } finally {
+        if ($multipart) { $multipart.Dispose() }
+        if ($fileStream) { $fileStream.Dispose() }
+        $client.Dispose()
+    }
+}
+
 function Add-Standard-Attachments {
     param(
         [long]$ContractId,
@@ -335,6 +370,10 @@ Disable-User $users.disabled $adminToken
 
 $runId = Get-Date -Format "yyyyMMddHHmmss"
 $files = New-DemoAttachmentFiles $runId
+
+$templates = @()
+$templates += Upload-Template "演示-采购合同模板-$runId" "适用于设备采购、供货验收和付款节点演示。" "采购合同模板摘要：包含交付、验收、付款、违约责任。" $files.Pdf "application/pdf" $adminToken
+$templates += Upload-Template "演示-服务合同模板-$runId" "适用于 SaaS 服务、运维支持和年度续约演示。" "服务合同模板摘要：包含服务范围、SLA、验收和归档。" $files.Docx "application/vnd.openxmlformats-officedocument.wordprocessingml.document" $adminToken
 
 $customerSpecs = @(
     @{ Name = "华东云服务有限公司"; Tel = "13801001001"; Address = "上海市浦东新区演示路 100 号"; Remark = "SaaS 年度服务" },
@@ -471,6 +510,11 @@ $userSpecs | ForEach-Object {
 }
 Write-Host ""
 Write-Host "Customers: $($customers.Count)"
+Write-Host "Templates:"
+$templates | ForEach-Object {
+    Write-Host ("  {0,-32} #{1} {2}" -f $_.name, $_.id, $_.originalName)
+}
+Write-Host ""
 Write-Host "Contracts:"
 $created | ForEach-Object {
     Write-Host ("  {0,-24} #{1}" -f $_.label, $_.id)

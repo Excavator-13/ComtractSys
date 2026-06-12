@@ -57,7 +57,7 @@ function Ensure-User {
     $list = (Invoke-Api -Method GET -Path "/users?keyword=$Username&page=1&size=100" -Token $Token).data.records
     $existing = $list | Where-Object { $_.username -eq $Username } | Select-Object -First 1
     if ($existing) {
-        Invoke-Api -Method PUT -Path "/users/$($existing.id)/roles" -Token $Token -Body @{ roleId = $RoleId } | Out-Null
+        Invoke-Api -Method PUT -Path "/users/$($existing.id)/roles" -Token $Token -Body @{ roleIds = @($RoleId) } | Out-Null
         return [pscustomobject]@{ id = [long]$existing.id; username = $Username; token = (Login $Username $DemoPassword) }
     }
 
@@ -65,7 +65,7 @@ function Ensure-User {
         username = $Username
         password = $DemoPassword
         displayName = $DisplayName
-        roleId = $RoleId
+        roleIds = @($RoleId)
     }
     return [pscustomobject]@{ id = [long]$created.data.id; username = $Username; token = (Login $Username $DemoPassword) }
 }

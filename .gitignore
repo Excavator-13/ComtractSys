@@ -12,3 +12,7 @@ dist/
 uploads/
 .tools/
 outputs/
+output/demo-run/
+output/playwright/*
+!output/playwright/
+!output/playwright/contractsys-smoke.mjs

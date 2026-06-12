@@ -4,7 +4,10 @@ param(
     [int]$FrontendPort = 5173,
     [switch]$SkipInstall,
     [switch]$OpenBrowser,
-    [switch]$SeedExtraData
+    [ValidateSet("None", "Basic", "Rich")]
+    [string]$SeedData = "Rich",
+    [switch]$SeedExtraData,
+    [switch]$KillExistingOnPorts
 )
 
 $ErrorActionPreference = "Stop"
@@ -42,9 +45,27 @@ function Test-PortOpen {
     return $null -ne $connection
 }
 
+function Stop-PortProcess {
+    param([int]$Port, [string]$Name)
+    $connection = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $connection) {
+        return
+    }
+    $processId = [int]$connection.OwningProcess
+    Write-Step "stopping process $processId that is using $Name port $Port"
+    Stop-Process -Id $processId -Force
+    Start-Sleep -Seconds 2
+}
+
 function Assert-PortFree {
     param([int]$Port, [string]$Name)
     if (Test-PortOpen $Port) {
+        if ($KillExistingOnPorts) {
+            Stop-PortProcess -Port $Port -Name $Name
+            if (-not (Test-PortOpen $Port)) {
+                return
+            }
+        }
         throw "$Name port $Port is already in use. Stop the existing service first, or pass a different port."
     }
 }
@@ -69,6 +90,10 @@ function Wait-HttpReady {
     }
 
     throw "Timed out waiting for $Url"
+}
+
+if ($SeedExtraData -and $SeedData -eq "Rich") {
+    $SeedData = "Basic"
 }
 
 New-Item -ItemType Directory -Force -Path $RunDir | Out-Null
@@ -148,9 +173,18 @@ if ($frontendServicePid) {
     $frontendServicePid | Set-Content -Path $FrontendServicePidFile
 }
 
-if ($SeedExtraData) {
-    Write-Step "creating additional staged demo data"
-    & (Join-Path $PSScriptRoot "seed-demo.ps1") -BaseUrl "http://localhost:$BackendPort/api/v1"
+switch ($SeedData) {
+    "Basic" {
+        Write-Step "creating basic staged demo data"
+        & (Join-Path $PSScriptRoot "seed-demo.ps1") -BaseUrl "http://localhost:$BackendPort/api/v1"
+    }
+    "Rich" {
+        Write-Step "creating rich staged demo data"
+        & (Join-Path $PSScriptRoot "seed-rich-demo.ps1") -BaseUrl "http://localhost:$BackendPort/api/v1"
+    }
+    default {
+        Write-Step "skipping scripted demo data"
+    }
 }
 
 Write-Host ""
@@ -163,6 +197,19 @@ Write-Host "  admin / 123456"
 Write-Host "  demo_drafter / 123456"
 Write-Host "  demo_manager / 123456"
 Write-Host "  demo_approver / 123456"
+if ($SeedData -eq "Basic") {
+    Write-Host "  demo_counter1 / 123456"
+    Write-Host "  demo_counter2 / 123456"
+    Write-Host "  demo_approver1 / 123456"
+    Write-Host "  demo_approver2 / 123456"
+    Write-Host "  demo_signer / 123456"
+}
+if ($SeedData -eq "Rich") {
+    Write-Host "  demo_ext_drafter_a / 123456"
+    Write-Host "  demo_ext_legal_1 / 123456"
+    Write-Host "  demo_ext_approve_mgr / 123456"
+    Write-Host "  demo_ext_signer_a / 123456"
+}
 Write-Host ""
 Write-Host "Logs:"
 Write-Host "  $BackendLog"
