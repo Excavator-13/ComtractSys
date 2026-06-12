@@ -425,7 +425,7 @@ const currentRoundTasks = computed(() => tasks.value.filter(t => Number(t.round 
 const canWithdrawCurrent = computed(() => currentRoundTasks.value.some(isWithdrawableTask))
 const taskRounds = computed(() => {
   const groups = new Map()
-  tasks.value.forEach(task => {
+  visibleTasks.value.forEach(task => {
     const round = task.round || 1
     if (!groups.has(round)) groups.set(round, [])
     groups.get(round).push(task)
@@ -441,8 +441,9 @@ const taskRounds = computed(() => {
       })
     }))
 })
-const countersignOpinions = computed(() => tasks.value.filter(t => t.taskType === 'COUNTERSIGN' && t.opinion))
-const approvalOpinions = computed(() => tasks.value.filter(t => t.taskType === 'APPROVAL' && t.opinion))
+const visibleTasks = computed(() => tasks.value.filter(t => t.taskStatus !== 'SUPERSEDED'))
+const countersignOpinions = computed(() => visibleTasks.value.filter(t => t.taskType === 'COUNTERSIGN' && t.opinion))
+const approvalOpinions = computed(() => visibleTasks.value.filter(t => t.taskType === 'APPROVAL' && t.opinion))
 const actionTitle = computed(() => {
   const map = { COUNTERSIGN: '会签处理', FINALIZE: '定稿处理', APPROVAL: '审批处理', SIGN: '签订处理' }
   return map[actionForm.type] || '流程处理'
@@ -726,11 +727,11 @@ onMounted(() => {
       </div>
 
       <div v-if="activeTab === 'tasks'" class="tab-content">
-        <div v-if="tasks.length === 0" class="muted" style="text-align:center;padding:24px">暂无流程任务</div>
+        <div v-if="visibleTasks.length === 0" class="muted" style="text-align:center;padding:24px">暂无流程任务</div>
         <table v-else>
           <thead><tr><th>类型</th><th>处理人</th><th>状态</th><th>意见</th><th>时间</th></tr></thead>
           <tbody>
-            <tr v-for="t in tasks" :key="t.id">
+            <tr v-for="t in visibleTasks" :key="t.id">
               <td>{{ taskLabel(t.taskType) }}</td>
               <td>{{ t.assigneeName }}</td>
               <td>

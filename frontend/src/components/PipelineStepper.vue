@@ -11,7 +11,11 @@ const props = defineProps({
 const currentIndex = computed(() => activeStepIndex(props.contract?.status, props.contract?.returnTargetStage))
 
 function tasksFor(type) {
-  return props.tasks.filter(task => task.taskType === type && Number(task.round || 1) === Number(props.contract?.currentRound || 1))
+  return props.tasks.filter(task =>
+    task.taskType === type &&
+    task.taskStatus !== 'SUPERSEDED' &&
+    Number(task.round || 1) === Number(props.contract?.currentRound || 1)
+  )
 }
 
 function stepState(index, step) {
