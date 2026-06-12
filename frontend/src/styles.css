@@ -142,16 +142,51 @@ textarea {
   font-weight: 700;
 }
 
+.field-label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.check-row {
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #d7dfeb;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.check-row input {
+  width: 16px;
+  height: 16px;
+}
+
+.check-row small {
+  color: #64748b;
+}
+
 .shell {
-  min-height: 100vh;
+  height: 100vh;
   display: grid;
   grid-template-columns: 248px 1fr;
+  overflow: hidden;
 }
 
 .sidebar {
   padding: 24px 16px;
   background: #172033;
   color: #f8fafc;
+  overflow-y: auto;
 }
 
 .brand {
@@ -197,6 +232,8 @@ textarea {
 
 .workspace {
   padding: 28px;
+  min-width: 0;
+  overflow-y: auto;
 }
 
 .topbar,

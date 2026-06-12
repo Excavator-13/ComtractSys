@@ -12,7 +12,6 @@ const auth = useAuthStore()
 const contracts = ref([])
 const tasks = ref([])
 const stats = reactive({ total: 0, draft: 0, assigned: 0, signed: 0, rejected: 0, pendingTasks: 0 })
-const monthlyStats = ref([])
 const error = ref('')
 const canViewContracts = computed(() => auth.permissions.includes('contract:view'))
 const canCreateContract = computed(() => auth.permissions.includes('contract:create'))
@@ -22,21 +21,25 @@ const canViewTasks = computed(() =>
 
 async function loadData() {
   error.value = ''
-  try {
-    const requests = []
-    if (canViewContracts.value) {
-      requests.push(
-        api.get('/statistics').then(res => Object.assign(stats, res.data)),
-        api.get('/statistics/contracts/monthly').then(res => monthlyStats.value = res.data),
-        api.get('/contracts', { params: { page: 1, size: 10 } }).then(res => contracts.value = res.data.records)
-      )
+  if (canViewContracts.value) {
+    try {
+      const [statisticsRes, contractsRes] = await Promise.all([
+        api.get('/statistics'),
+        api.get('/contracts', { params: { page: 1, size: 10 } })
+      ])
+      Object.assign(stats, statisticsRes.data)
+      contracts.value = contractsRes.data.records
+    } catch (err) {
+      error.value = err.message
     }
-    if (canViewTasks.value) {
-      requests.push(api.get('/tasks/my').then(res => tasks.value = res.data))
+  }
+  if (canViewTasks.value) {
+    try {
+      const res = await api.get('/tasks/my')
+      tasks.value = res.data
+    } catch {
+      tasks.value = []
     }
-    await Promise.all(requests)
-  } catch (err) {
-    error.value = err.message
   }
 }
 
@@ -52,7 +55,7 @@ const statusDistribution = computed(() => {
     .map(item => ({ ...item, count: distribution[item.value] || 0 }))
 })
 
-const monthlyMax = computed(() => Math.max(1, ...monthlyStats.value.map(item => item.count || 0)))
+const statusMax = computed(() => Math.max(1, ...statusDistribution.value.map(item => item.count || 0)))
 
 function openStatus(status) {
   router.push({ path: '/contracts', query: { status } })
@@ -74,7 +77,7 @@ onMounted(loadData)
 
     <section v-if="canViewContracts || canViewTasks || canCreateContract" class="metrics">
       <div><span>待办任务</span><strong>{{ tasks.length }}</strong></div>
-      <div><span>已拒绝</span><strong>{{ stats.rejected }}</strong></div>
+      <div v-if="canViewContracts"><span>已拒绝</span><strong>{{ stats.rejected }}</strong></div>
       <div class="quick-actions">
         <button v-if="canCreateContract" class="primary" @click="router.push('/contracts/create')"><FilePlus2 :size="16" /> 起草合同</button>
         <button v-if="tasks.length" class="secondary" @click="router.push('/tasks')"><Handshake :size="16" /> 处理待办 ({{ tasks.length }})</button>
@@ -95,10 +98,10 @@ onMounted(loadData)
           <strong>{{ item.count }}</strong>
         </button>
       </div>
-      <div v-if="monthlyStats.length" class="chart-bars">
-        <div v-for="item in monthlyStats" :key="item.month" class="chart-bar">
-          <span :style="{ height: `${Math.max(8, ((item.count || 0) / monthlyMax) * 120)}px` }"></span>
-          <small>{{ item.month.slice(5) }}</small>
+      <div class="chart-bars">
+        <div v-for="item in statusDistribution" :key="'bar-' + item.value" class="chart-bar">
+          <span :style="{ height: `${Math.max(8, ((item.count || 0) / statusMax) * 120)}px` }"></span>
+          <small>{{ item.label }}</small>
           <strong>{{ item.count }}</strong>
         </div>
       </div>

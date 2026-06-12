@@ -56,7 +56,10 @@ public class AuthService {
     public LoginResponse login(String username, String password) {
         SysUser user = userRepository.findByUsernameAndDeletedFalse(username)
                 .orElseThrow(() -> ApiException.unauthorized("用户名或密码错误"));
-        if (user.getStatus() != UserStatus.ENABLED || !passwordEncoder.matches(password, user.getPasswordHash())) {
+        if (user.getStatus() != UserStatus.ENABLED) {
+            throw ApiException.unauthorized("账号已禁用，请联系管理员");
+        }
+        if (!passwordEncoder.matches(password, user.getPasswordHash())) {
             throw ApiException.unauthorized("用户名或密码错误");
         }
         String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername());

@@ -40,6 +40,7 @@ public class ContractAttachmentService {
     public AttachmentView upload(Long contractId, MultipartFile file, SysUser user) {
         Contract contract = accessGuard.getContract(contractId);
         accessGuard.ensureCanModifyContract(contract, user);
+        ensureAttachmentsMutable(contract);
         Attachment attachment = save(contract, file, user);
         return AttachmentView.from(attachment);
     }
@@ -51,6 +52,7 @@ public class ContractAttachmentService {
         }
         Contract contract = accessGuard.getContract(contractId);
         accessGuard.ensureCanModifyContract(contract, user);
+        ensureAttachmentsMutable(contract);
         files.stream()
                 .filter(file -> file != null && !file.isEmpty())
                 .forEach(file -> save(contract, file, user));
@@ -84,6 +86,7 @@ public class ContractAttachmentService {
         Attachment attachment = attachmentRepository.findById(attachmentId)
                 .orElseThrow(() -> ApiException.notFound("附件不存在"));
         accessGuard.ensureCanModifyContract(attachment.getContract(), user);
+        ensureAttachmentsMutable(attachment.getContract());
         Path filePath = fileStorageService.resolve(attachment.getStoredName());
         attachmentRepository.delete(attachment);
         eventPublisher.publishEvent(new OperationLogEvent(user, "CONTRACT", "删除附件", "ATTACHMENT", attachment.getId(),
@@ -111,6 +114,18 @@ public class ContractAttachmentService {
                 .orElseThrow(() -> ApiException.notFound("附件不存在"));
         accessGuard.ensureCanViewContract(attachment.getContract(), user);
         return attachment;
+    }
+
+    private void ensureAttachmentsMutable(Contract contract) {
+        if (!List.of(
+                ContractStatus.DRAFT,
+                ContractStatus.ASSIGNED,
+                ContractStatus.COUNTERSIGNED,
+                ContractStatus.REJECTED,
+                ContractStatus.RETURNED
+        ).contains(contract.getStatus())) {
+            throw ApiException.conflict("合同定稿后不能修改附件");
+        }
     }
 
     private AttachmentResource resource(Attachment attachment, MediaType contentType) {

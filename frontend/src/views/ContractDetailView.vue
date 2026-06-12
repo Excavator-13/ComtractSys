@@ -157,7 +157,7 @@ async function assign() {
       signUserId: Number(assignForm.signUserId)
     })
     success.value = '分配成功'
-    await loadDetail()
+    await reloadWorkflow()
     notifyTasksUpdated()
     activeTab.value = 'info'
   } catch (err) {
@@ -181,7 +181,7 @@ async function saveEdit() {
       content: editForm.content
     })
     success.value = '合同已更新'
-    await loadDetail()
+    await reloadWorkflow()
     await loadVersions()
     activeTab.value = 'info'
   } catch (err) {
@@ -199,7 +199,7 @@ async function doCountersign() {
   try {
     await api.post(`/contracts/${route.params.id}/countersign`, { opinion: actionForm.opinion })
     success.value = '会签成功'
-    await loadDetail()
+    await reloadWorkflow()
     notifyTasksUpdated()
     activeTab.value = 'rollback'
   } catch (err) {
@@ -215,7 +215,8 @@ async function doFinalize() {
   try {
     await api.post(`/contracts/${route.params.id}/finalize`, { content: actionForm.content })
     success.value = '定稿成功'
-    await loadDetail()
+    await reloadWorkflow()
+    await loadVersions()
     notifyTasksUpdated()
     activeTab.value = 'rollback'
   } catch (err) {
@@ -231,7 +232,7 @@ async function doApprove(result) {
   try {
     await api.post(`/contracts/${route.params.id}/approve`, { result, opinion: actionForm.opinion })
     success.value = result === 'APPROVED' ? '审批通过' : '已拒绝'
-    await loadDetail()
+    await reloadWorkflow()
     notifyTasksUpdated()
     activeTab.value = 'rollback'
   } catch (err) {
@@ -247,7 +248,7 @@ async function doSign() {
   try {
     await api.post(`/contracts/${route.params.id}/sign`, { signInfo: actionForm.signInfo, signedDate: actionForm.signedDate })
     success.value = '签订成功'
-    await loadDetail()
+    await reloadWorkflow()
     notifyTasksUpdated()
     activeTab.value = 'rollback'
   } catch (err) {
@@ -263,8 +264,7 @@ async function doReturn(targetStage = actionForm.returnTarget) {
   try {
     await api.post(`/contracts/${route.params.id}/return`, { targetStage, opinion: actionForm.opinion })
     success.value = '合同已打回'
-    await loadDetail()
-    await loadTimeline()
+    await reloadWorkflow()
     notifyTasksUpdated()
     activeTab.value = 'rollback'
   } catch (err) {
@@ -277,8 +277,7 @@ async function doResume() {
   try {
     await api.post(`/contracts/${route.params.id}/resume`)
     success.value = '流程已恢复'
-    await loadDetail()
-    await loadTimeline()
+    await reloadWorkflow()
     notifyTasksUpdated()
     activeTab.value = 'rollback'
   } catch (err) {
@@ -292,8 +291,7 @@ async function doRecall() {
   try {
     await api.post(`/contracts/${route.params.id}/recall`)
     success.value = '合同已撤回'
-    await loadDetail()
-    await loadTimeline()
+    await reloadWorkflow()
     notifyTasksUpdated()
     activeTab.value = 'rollback'
   } catch (err) {
@@ -307,8 +305,7 @@ async function doWithdrawTask() {
   try {
     await api.post(`/contracts/${route.params.id}/tasks/withdraw`)
     success.value = '任务已撤回'
-    await loadDetail()
-    await loadTimeline()
+    await reloadWorkflow()
     notifyTasksUpdated()
     activeTab.value = 'rollback'
   } catch (err) {
@@ -322,7 +319,7 @@ async function doResubmit() {
   try {
     await api.post(`/contracts/${route.params.id}/resubmit`)
     success.value = '已重新提交审批'
-    await loadDetail()
+    await reloadWorkflow()
     notifyTasksUpdated()
   } catch (err) {
     error.value = err.message
@@ -344,12 +341,17 @@ async function loadVersions() {
   } catch {}
 }
 
+async function reloadWorkflow() {
+  await loadDetail()
+  await loadTimeline()
+}
+
 async function doCancel() {
   askConfirm('取消合同', '确认取消该合同？取消后会关闭所有待办任务。', async () => {
   try {
     await api.post(`/contracts/${route.params.id}/cancel`)
     success.value = '合同已取消'
-    await loadDetail()
+    await reloadWorkflow()
     notifyTasksUpdated()
   } catch (err) {
     error.value = err.message
@@ -414,7 +416,9 @@ const canApproveCurrent = computed(() => hasPermission('contract:approve') && co
 const canSignCurrent = computed(() => hasPermission('contract:sign') && contract.value?.status === 'APPROVED' && pendingTask('SIGN'))
 const canResubmitCurrent = computed(() => hasPermission('contract:update') && contract.value?.status === 'REJECTED' && Number(contract.value?.drafterId) === Number(auth.user?.id))
 const canCancelCurrent = computed(() => hasPermission('contract:delete') && !['SIGNED', 'CANCELLED'].includes(contract.value?.status))
-const canModifyAttachments = computed(() => hasPermission('contract:update') && contract.value?.status !== 'CANCELLED')
+const canModifyAttachments = computed(() =>
+  hasPermission('contract:update') && ['DRAFT', 'ASSIGNED', 'COUNTERSIGNED', 'REJECTED', 'RETURNED'].includes(contract.value?.status)
+)
 const canEditCurrent = computed(() => hasPermission('contract:update') && Number(contract.value?.drafterId) === Number(auth.user?.id) && ['DRAFT', 'COUNTERSIGNED', 'REJECTED', 'RETURNED'].includes(contract.value?.status))
 const canReturnCurrent = computed(() =>
   (canCountersignCurrent.value || canApproveCurrent.value || canSignCurrent.value) && contract.value?.status !== 'RETURNED'
@@ -938,3 +942,4 @@ onMounted(() => {
     />
   </div>
 </template>
+

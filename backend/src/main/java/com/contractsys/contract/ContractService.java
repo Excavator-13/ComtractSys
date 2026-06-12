@@ -426,7 +426,7 @@ public class ContractService {
     private void completeRemainingPendingTasks(Long contractId, TaskType taskType, String opinion) {
         List<ContractTask> tasks = taskRepository.findByContractIdAndTaskTypeAndTaskStatus(contractId, taskType, TaskStatus.PENDING);
         for (ContractTask task : tasks) {
-            task.setTaskStatus(TaskStatus.DONE);
+            task.setTaskStatus(TaskStatus.SUPERSEDED);
             task.setOpinion(opinion);
             task.setOperatedAt(LocalDateTime.now());
         }

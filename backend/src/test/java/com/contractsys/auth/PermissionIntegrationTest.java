@@ -414,6 +414,14 @@ class PermissionIntegrationTest {
                         .header("Authorization", "Bearer " + operatorToken))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(40100));
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"test_operator","password":"123456"}
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("账号已禁用，请联系管理员"));
     }
 
     @Test

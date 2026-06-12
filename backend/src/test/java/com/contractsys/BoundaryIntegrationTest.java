@@ -497,6 +497,24 @@ class BoundaryIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("template.pdf")));
 
+        String visibleToOperatorList = mockMvc.perform(get("/api/v1/contract-templates")
+                        .header("Authorization", "Bearer " + operator.token()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        boolean operatorCanSeeDefaultVisibleTemplate = false;
+        for (JsonNode template : objectMapper.readTree(visibleToOperatorList).path("data")) {
+            if (template.path("id").asLong() == templateId) {
+                operatorCanSeeDefaultVisibleTemplate = true;
+                break;
+            }
+        }
+        if (!operatorCanSeeDefaultVisibleTemplate) {
+            throw new AssertionError("未限制角色的模板应出现在操作员起草参考列表");
+        }
+        mockMvc.perform(get("/api/v1/contract-templates/" + templateId + "/download")
+                        .header("Authorization", "Bearer " + operator.token()))
+                .andExpect(status().isOk());
+
         String scopedName = unique("限角色模板");
         String scopedUpload = mockMvc.perform(multipart("/api/v1/contract-templates")
                         .file(new MockMultipartFile("file", "scoped.pdf", "application/pdf", "%PDF-1.4\nscoped".getBytes()))

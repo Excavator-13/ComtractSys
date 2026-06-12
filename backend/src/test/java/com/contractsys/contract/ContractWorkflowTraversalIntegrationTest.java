@@ -126,6 +126,14 @@ class ContractWorkflowTraversalIntegrationTest {
         assign(id, List.of(cs1Id, cs2Id), List.of(ap1Id, ap2Id), signerId);
         assertStatus(id, "ASSIGNED");
         assertThat(myTaskTypesForContract(assignerToken, id)).isEmpty();
+        JsonNode assignedDetail = getJson("/api/v1/contracts/" + id, adminToken).get("data");
+        int completedAssignTasks = 0;
+        for (JsonNode task : assignedDetail.get("tasks")) {
+            if ("ASSIGN".equals(task.get("taskType").asText()) && "DONE".equals(task.get("taskStatus").asText())) {
+                completedAssignTasks++;
+            }
+        }
+        assertThat(completedAssignTasks).isEqualTo(1);
 
         // 第一个会签完成后仍停留在 ASSIGNED
         opOk(cs1Token, id, "countersign", "{\"opinion\":\"同意条款\"}");
@@ -305,6 +313,37 @@ class ContractWorkflowTraversalIntegrationTest {
 
         opOk(signerToken, approvalWithdrawId, "sign", "{\"signInfo\":\"撤回审批后签订\",\"signedDate\":\"" + LocalDate.now() + "\"}");
         assertStatus(approvalWithdrawId, "SIGNED");
+    }
+
+    @Test
+    void attachmentsCannotBeChangedAfterFinalized() throws Exception {
+        long id = createContract("附件定稿限制合同" + suffix);
+        MockMultipartFile draftFile = new MockMultipartFile(
+                "file", "draft.pdf", "application/pdf", "%PDF-1.4\n附件".getBytes());
+        String uploadResponse = mockMvc.perform(multipart("/api/v1/contracts/" + id + "/attachments")
+                        .file(draftFile)
+                        .header("Authorization", "Bearer " + drafterToken))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        long attachmentId = objectMapper.readTree(uploadResponse).path("data").path("id").asLong();
+
+        assign(id, List.of(cs1Id), List.of(ap1Id), signerId);
+        opOk(cs1Token, id, "countersign", "{\"opinion\":\"同意\"}");
+        opOk(drafterToken, id, "finalize", "{\"content\":\"定稿正文\"}");
+        assertStatus(id, "FINALIZED");
+
+        MockMultipartFile finalizedFile = new MockMultipartFile(
+                "file", "finalized.pdf", "application/pdf", "%PDF-1.4\n定稿后附件".getBytes());
+        mockMvc.perform(multipart("/api/v1/contracts/" + id + "/attachments")
+                        .file(finalizedFile)
+                        .header("Authorization", "Bearer " + drafterToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("合同定稿后不能修改附件"));
+
+        mockMvc.perform(delete("/api/v1/attachments/" + attachmentId)
+                        .header("Authorization", "Bearer " + drafterToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("合同定稿后不能修改附件"));
     }
 
     @Test

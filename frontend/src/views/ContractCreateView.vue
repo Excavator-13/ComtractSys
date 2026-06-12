@@ -1,12 +1,11 @@
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowLeft, Download, Paperclip, Upload, X } from 'lucide-vue-next'
+import { ArrowLeft, FolderDown, Paperclip, Upload, X } from 'lucide-vue-next'
 import { api } from '../api'
 
 const router = useRouter()
 const customers = ref([])
-const templates = ref([])
 const error = ref('')
 const loading = ref(false)
 const files = ref([])
@@ -61,27 +60,6 @@ function handleFiles(e) {
   files.value = Array.from(e.target.files || [])
 }
 
-async function loadTemplates() {
-  try {
-    const res = await api.get('/contract-templates')
-    templates.value = res.data
-  } catch {}
-}
-
-async function downloadTemplate(template) {
-  try {
-    const res = await api.get(`/contract-templates/${template.id}/download`, { responseType: 'blob' })
-    const url = URL.createObjectURL(res.data)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = template.originalName || `${template.name}.txt`
-    link.click()
-    URL.revokeObjectURL(url)
-  } catch (err) {
-    error.value = err.message
-  }
-}
-
 function removeFile(index) {
   files.value.splice(index, 1)
 }
@@ -94,7 +72,6 @@ function fileSizeLabel(bytes) {
 
 onMounted(() => {
   loadCustomers()
-  loadTemplates()
 })
 </script>
 
@@ -120,21 +97,12 @@ onMounted(() => {
           <div class="attachment-head">
             <div>
               <strong>参考模板</strong>
-              <p class="muted">下载模板线下拟稿后，可在下方作为附件上传。模板不会覆盖合同概述。</p>
+              <p class="muted">进入模板库下载参考文件，线下拟稿后可在下方作为附件上传。</p>
             </div>
-            <button class="secondary" type="button" @click="router.push('/templates')">模板库</button>
+            <button class="secondary" type="button" @click="router.push('/templates')">
+              <FolderDown :size="16" /> 模板库
+            </button>
           </div>
-          <div v-if="templates.length" class="attachment-list">
-            <div v-for="t in templates" :key="t.id" class="attachment-item">
-              <Paperclip :size="16" />
-              <span>{{ t.name }}</span>
-              <small>{{ t.description || t.originalName || '文本模板' }}</small>
-              <button class="icon mini" type="button" title="下载模板" @click="downloadTemplate(t)">
-                <Download :size="14" />
-              </button>
-            </div>
-          </div>
-          <p v-else class="empty-hint">暂无可用模板</p>
         </div>
         <label class="full">合同概述<textarea v-model="form.content" rows="8" placeholder="概述合同目标、范围、关键条款和交付要求" required /></label>
         <div class="full attachment-box">

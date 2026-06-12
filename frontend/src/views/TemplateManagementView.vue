@@ -6,10 +6,15 @@ import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
 const templates = ref([])
+const roleOptions = ref([
+  { roleCode: 'ROLE_OPERATOR', roleName: '操作员' },
+  { roleCode: 'ROLE_CONTRACT_ADMIN', roleName: '合同管理员' },
+  { roleCode: 'ROLE_NEW_USER', roleName: '新用户' }
+])
 const error = ref('')
 const loading = ref(false)
 const fileInput = ref(null)
-const form = reactive({ name: '', description: '', content: '', visibleRoles: '', file: null })
+const form = reactive({ name: '', description: '', content: '', visibleRoles: [], file: null })
 const canManage = computed(() => auth.permissions.includes('contract:assign'))
 
 function fileSizeLabel(bytes) {
@@ -33,6 +38,13 @@ async function loadTemplates() {
   }
 }
 
+async function loadRoles() {
+  try {
+    const res = await api.get('/roles')
+    roleOptions.value = (res.data || []).map(role => ({ roleCode: role.roleCode, roleName: role.roleName }))
+  } catch {}
+}
+
 function onFileChange(e) {
   form.file = e.target.files?.[0] || null
   if (form.file && !form.name) {
@@ -50,14 +62,14 @@ async function uploadTemplate() {
   data.append('name', form.name)
   data.append('description', form.description)
   data.append('content', form.content)
-  data.append('visibleRoles', form.visibleRoles)
+  data.append('visibleRoles', form.visibleRoles.join(','))
   if (form.file) data.append('file', form.file)
   try {
     await api.post('/contract-templates', data, { headers: { 'Content-Type': 'multipart/form-data' } })
     form.name = ''
     form.description = ''
     form.content = ''
-    form.visibleRoles = ''
+    form.visibleRoles = []
     form.file = null
     if (fileInput.value) fileInput.value.value = ''
     await loadTemplates()
@@ -100,6 +112,7 @@ async function downloadTemplate(template) {
 }
 
 onMounted(loadTemplates)
+onMounted(loadRoles)
 </script>
 
 <template>
@@ -119,7 +132,17 @@ onMounted(loadTemplates)
       <div class="form-grid" style="margin-top:14px">
         <label>模板名称 *<input v-model="form.name" /></label>
         <label>说明<input v-model="form.description" /></label>
-        <label class="full">可见角色<input v-model="form.visibleRoles" placeholder="ROLE_OPERATOR,ROLE_CONTRACT_ADMIN；留空为全部可见" /></label>
+        <div class="full">
+          <span class="field-label">可见角色</span>
+          <div class="choice-grid">
+            <label v-for="role in roleOptions" :key="role.roleCode" class="check-row">
+              <input v-model="form.visibleRoles" type="checkbox" :value="role.roleCode" />
+              <span>{{ role.roleName || role.roleCode }}</span>
+              <small>{{ role.roleCode }}</small>
+            </label>
+          </div>
+          <p class="muted" style="margin:6px 0 0">不选择时全部角色可见。</p>
+        </div>
         <label class="full">摘要<textarea v-model="form.content" rows="3" placeholder="模板适用范围、关键条款或使用说明" /></label>
         <label class="full">模板文件<input ref="fileInput" type="file" accept=".doc,.docx,.jpg,.jpeg,.png,.bmp,.gif,.pdf" @change="onFileChange" /></label>
       </div>
