@@ -12,6 +12,7 @@ const auth = useAuthStore()
 const contracts = ref([])
 const tasks = ref([])
 const stats = reactive({ total: 0, draft: 0, assigned: 0, signed: 0, rejected: 0, pendingTasks: 0 })
+const monthlyStats = ref([])
 const error = ref('')
 const canViewContracts = computed(() => auth.permissions.includes('contract:view'))
 const canCreateContract = computed(() => auth.permissions.includes('contract:create'))
@@ -23,8 +24,9 @@ async function loadData() {
   error.value = ''
   if (canViewContracts.value) {
     try {
-      const [statisticsRes, contractsRes] = await Promise.all([
+      const [statisticsRes, _monthlyRes, contractsRes] = await Promise.all([
         api.get('/statistics'),
+        api.get('/statistics/contracts/monthly').then(res => monthlyStats.value = res.data || []).catch(() => []),
         api.get('/contracts', { params: { page: 1, size: 10 } })
       ])
       Object.assign(stats, statisticsRes.data)
@@ -55,7 +57,7 @@ const statusDistribution = computed(() => {
     .map(item => ({ ...item, count: distribution[item.value] || 0 }))
 })
 
-const statusMax = computed(() => Math.max(1, ...statusDistribution.value.map(item => item.count || 0)))
+const monthlyMax = computed(() => Math.max(1, ...monthlyStats.value.map(item => item.count || 0)))
 
 function openStatus(status) {
   router.push({ path: '/contracts', query: { status } })
@@ -98,13 +100,17 @@ onMounted(loadData)
           <strong>{{ item.count }}</strong>
         </button>
       </div>
-      <div class="chart-bars">
-        <div v-for="item in statusDistribution" :key="'bar-' + item.value" class="chart-bar">
-          <span :style="{ height: `${Math.max(8, ((item.count || 0) / statusMax) * 120)}px` }"></span>
-          <small>{{ item.label }}</small>
+      <div class="section-title" style="margin-top:18px">
+        <h2>月度合同量</h2>
+      </div>
+      <div v-if="monthlyStats.length" class="chart-bars">
+        <div v-for="item in monthlyStats" :key="item.month" class="chart-bar">
+          <span :style="{ height: `${Math.max(8, ((item.count || 0) / monthlyMax) * 120)}px` }"></span>
+          <small>{{ item.month }}</small>
           <strong>{{ item.count }}</strong>
         </div>
       </div>
+      <p v-else class="empty-hint">暂无月度统计</p>
     </section>
 
     <section v-if="canViewContracts" class="panel">

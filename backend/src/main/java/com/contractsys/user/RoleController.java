@@ -4,6 +4,7 @@ import com.contractsys.auth.CurrentUser;
 import com.contractsys.auth.RequirePermission;
 import com.contractsys.common.ApiResponse;
 import com.contractsys.user.dto.AssignPermissionsRequest;
+import com.contractsys.user.dto.RoleOptionView;
 import com.contractsys.user.dto.RoleRequest;
 import com.contractsys.user.dto.RoleUpdateRequest;
 import com.contractsys.user.dto.RoleView;
@@ -25,6 +26,14 @@ public class RoleController {
     @GetMapping
     public ApiResponse<List<RoleView>> list(@CurrentUser SysUser user) {
         return ApiResponse.ok(roleService.list());
+    }
+
+    @GetMapping("/options")
+    @RequirePermission("contract:assign")
+    public ApiResponse<List<RoleOptionView>> options(@CurrentUser SysUser user) {
+        return ApiResponse.ok(roleService.list().stream()
+                .map(role -> new RoleOptionView(role.roleCode(), role.roleName()))
+                .toList());
     }
 
     @PostMapping

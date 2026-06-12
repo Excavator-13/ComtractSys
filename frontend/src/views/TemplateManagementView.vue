@@ -40,7 +40,7 @@ async function loadTemplates() {
 
 async function loadRoles() {
   try {
-    const res = await api.get('/roles')
+    const res = await api.get('/roles/options')
     roleOptions.value = (res.data || []).map(role => ({ roleCode: role.roleCode, roleName: role.roleName }))
   } catch {}
 }

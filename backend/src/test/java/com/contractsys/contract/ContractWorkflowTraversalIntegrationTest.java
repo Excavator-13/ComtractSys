@@ -347,6 +347,35 @@ class ContractWorkflowTraversalIntegrationTest {
     }
 
     @Test
+    void cancelSupersedesPendingTasksInsteadOfMarkingThemDone() throws Exception {
+        long id = driveToFinalized(List.of(cs1Id), List.of(ap1Id, ap2Id), signerId,
+                "取消封存待办合同" + suffix);
+        assertThat(myTaskTypesForContract(ap1Token, id)).contains("APPROVAL");
+        assertThat(myTaskTypesForContract(ap2Token, id)).contains("APPROVAL");
+
+        opOk(adminToken, id, "cancel", null);
+        assertStatus(id, "CANCELLED");
+
+        JsonNode detail = getJson("/api/v1/contracts/" + id, adminToken).get("data");
+        int doneApprovalTasks = 0;
+        int cancelledApprovalTasks = 0;
+        for (JsonNode task : detail.get("tasks")) {
+            if ("APPROVAL".equals(task.get("taskType").asText())) {
+                if ("DONE".equals(task.get("taskStatus").asText())) {
+                    doneApprovalTasks++;
+                }
+                if ("SUPERSEDED".equals(task.get("taskStatus").asText())
+                        && task.hasNonNull("opinion")
+                        && task.get("opinion").asText().contains("合同已取消")) {
+                    cancelledApprovalTasks++;
+                }
+            }
+        }
+        assertThat(doneApprovalTasks).isZero();
+        assertThat(cancelledApprovalTasks).isEqualTo(2);
+    }
+
+    @Test
     void returnToFinalizeCreatesNewRoundWithoutOverwritingHistory() throws Exception {
         long id = driveToFinalized(List.of(cs1Id), List.of(ap1Id, ap2Id), signerId, "多轮打回合同" + suffix);
 

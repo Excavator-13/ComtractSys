@@ -203,6 +203,15 @@ class PermissionIntegrationTest {
                 .andExpect(jsonPath("$.code").value(40900));
     }
 
+    @Test
+    @Order(2)
+    void contractAssignerCanLoadRoleOptionsForTemplateVisibility() throws Exception {
+        mockMvc.perform(get("/api/v1/roles/options")
+                        .header("Authorization", "Bearer " + contractAdminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.roleCode == 'ROLE_OPERATOR')].roleName").exists());
+    }
+
     // ========== Operator tests ==========
 
     @Test
