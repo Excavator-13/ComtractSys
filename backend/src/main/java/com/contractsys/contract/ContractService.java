@@ -171,6 +171,7 @@ public class ContractService {
                     "第 " + contract.getCurrentRound() + " 轮重新起草后恢复会签");
         } else if ("FINALIZE".equals(target)) {
             createTask(contract, contract.getDrafter().getId(), TaskType.FINALIZE, null);
+            cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.COUNTERSIGN, "contract:countersign", false);
             cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.APPROVAL, "contract:approve", false);
             cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.SIGN, "contract:sign", false);
             changeStatus(contract, ContractStatus.COUNTERSIGNED, operator,
@@ -312,6 +313,7 @@ public class ContractService {
         }
         int previousRound = contract.getCurrentRound();
         contract.setCurrentRound(previousRound + 1);
+        cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.COUNTERSIGN, "contract:countersign", false);
         cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.APPROVAL, "contract:approve", true);
         cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.SIGN, "contract:sign", false);
         changeStatus(contract, ContractStatus.FINALIZED, operator, "重新提交审批");

@@ -234,6 +234,48 @@ class ContractWorkflowTraversalIntegrationTest {
     }
 
     @Test
+    void resubmitThenReturnToDraftPreservesCountersignAssignees() throws Exception {
+        long id = driveToFinalized(List.of(cs1Id, cs2Id), List.of(ap1Id, ap2Id), signerId,
+                "重提后打回起草合同" + suffix);
+
+        opOk(ap1Token, id, "approve", "{\"result\":\"REJECTED\",\"opinion\":\"审批拒绝后需修改\"}");
+        assertStatus(id, "REJECTED");
+
+        opOk(drafterToken, id, "resubmit", null);
+        assertStatus(id, "FINALIZED");
+        assertThat(myTaskTypesForContract(ap1Token, id)).contains("APPROVAL");
+
+        opOk(ap1Token, id, "return", "{\"targetStage\":\"DRAFT\",\"opinion\":\"退回重新起草\"}");
+        assertStatus(id, "RETURNED");
+
+        opOk(drafterToken, id, "resume", null);
+        assertStatus(id, "ASSIGNED");
+        assertThat(myTaskTypesForContract(cs1Token, id)).contains("COUNTERSIGN");
+        assertThat(myTaskTypesForContract(cs2Token, id)).contains("COUNTERSIGN");
+
+        opOk(cs1Token, id, "countersign", "{\"opinion\":\"第三轮会签同意\"}");
+        assertStatus(id, "ASSIGNED");
+        opOk(cs2Token, id, "countersign", "{\"opinion\":\"第三轮会签同意\"}");
+        assertStatus(id, "COUNTERSIGNED");
+
+        opOk(drafterToken, id, "finalize", "{\"content\":\"第三轮定稿正文\"}");
+        assertStatus(id, "FINALIZED");
+        assertThat(myTaskTypesForContract(ap1Token, id)).contains("APPROVAL");
+        assertThat(myTaskTypesForContract(ap2Token, id)).contains("APPROVAL");
+
+        opOk(ap1Token, id, "approve", "{\"result\":\"APPROVED\",\"opinion\":\"第三轮审批通过\"}");
+        opOk(ap2Token, id, "approve", "{\"result\":\"APPROVED\",\"opinion\":\"第三轮审批通过\"}");
+        assertStatus(id, "APPROVED");
+
+        opOk(signerToken, id, "sign", "{\"signInfo\":\"第三轮签订\",\"signedDate\":\"" + LocalDate.now() + "\"}");
+        assertStatus(id, "SIGNED");
+
+        JsonNode detail = getJson("/api/v1/contracts/" + id, adminToken).get("data");
+        assertThat(detail.get("contract").get("currentRound").asInt()).isEqualTo(3);
+        assertThat(taskRounds(detail)).contains(1, 2, 3);
+    }
+
+    @Test
     void withdrawFinalizeAndApprovalCanContinueToNextStage() throws Exception {
         long finalizeWithdrawId = driveToFinalized(List.of(cs1Id), List.of(ap1Id), signerId, "撤回定稿合同" + suffix);
 
