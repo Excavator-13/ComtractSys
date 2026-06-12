@@ -30,6 +30,9 @@ public class ContractTemplate {
 
     private Long fileSize;
 
+    @Column(length = 500)
+    private String visibleRoles;
+
     @Column(nullable = false)
     private boolean enabled = true;
 
@@ -57,6 +60,8 @@ public class ContractTemplate {
     public void setContentType(String contentType) { this.contentType = contentType; }
     public Long getFileSize() { return fileSize; }
     public void setFileSize(Long fileSize) { this.fileSize = fileSize; }
+    public String getVisibleRoles() { return visibleRoles; }
+    public void setVisibleRoles(String visibleRoles) { this.visibleRoles = visibleRoles; }
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
     public LocalDateTime getCreatedAt() { return createdAt; }

@@ -3,42 +3,35 @@ package com.contractsys.contract;
 import com.contractsys.common.ApiException;
 import com.contractsys.common.PageRequests;
 import com.contractsys.contract.dto.ContractDetailView;
-import com.contractsys.contract.dto.ContractTemplateView;
 import com.contractsys.contract.dto.ContractTimelineView;
 import com.contractsys.contract.dto.ContractVersionView;
 import com.contractsys.contract.dto.ContractView;
 import com.contractsys.contract.dto.TaskView;
 import com.contractsys.user.SysUser;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Service
 public class ContractQueryService {
     private final ContractRepository contractRepository;
     private final ContractTaskRepository taskRepository;
     private final ContractStateHistoryRepository stateHistoryRepository;
-    private final ContractTemplateRepository templateRepository;
     private final ContractVersionRepository versionRepository;
     private final ContractAccessGuard accessGuard;
 
     public ContractQueryService(ContractRepository contractRepository,
                                 ContractTaskRepository taskRepository,
                                 ContractStateHistoryRepository stateHistoryRepository,
-                                ContractTemplateRepository templateRepository,
                                 ContractVersionRepository versionRepository,
                                 ContractAccessGuard accessGuard) {
         this.contractRepository = contractRepository;
         this.taskRepository = taskRepository;
         this.stateHistoryRepository = stateHistoryRepository;
-        this.templateRepository = templateRepository;
         this.versionRepository = versionRepository;
         this.accessGuard = accessGuard;
     }
@@ -128,13 +121,6 @@ public class ContractQueryService {
 
     public List<TaskView> myTasks(SysUser user) {
         return taskRepository.findActivePendingTasksByAssignee(user).stream().map(TaskView::from).toList();
-    }
-
-    @Cacheable(cacheNames = "contractTemplates", key = "'enabled'")
-    public List<ContractTemplateView> templates() {
-        return templateRepository.findByEnabledTrueOrderByCreatedAtAsc().stream()
-                .map(ContractTemplateView::from)
-                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     public List<ContractVersionView> versions(Long id, SysUser user) {

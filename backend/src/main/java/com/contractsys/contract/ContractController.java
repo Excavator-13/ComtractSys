@@ -102,7 +102,7 @@ public class ContractController {
     @GetMapping("/contract-templates")
     @RequirePermission("contract:create")
     public ApiResponse<List<ContractTemplateView>> templates(@CurrentUser SysUser user) {
-        return ApiResponse.ok(templateService.listEnabled());
+        return ApiResponse.ok(templateService.listEnabled(user));
     }
 
     @GetMapping("/contract-templates/manage")
@@ -116,9 +116,10 @@ public class ContractController {
     public ApiResponse<ContractTemplateView> createTemplate(@RequestParam String name,
                                                             @RequestParam(required = false) String description,
                                                             @RequestParam(required = false) String content,
+                                                            @RequestParam(required = false) String visibleRoles,
                                                             @RequestParam(value = "file", required = false) MultipartFile file,
                                                             @CurrentUser SysUser user) {
-        return ApiResponse.ok("上传成功", templateService.create(name, description, content, file, user));
+        return ApiResponse.ok("上传成功", templateService.create(name, description, content, visibleRoles, file, user));
     }
 
     @PatchMapping("/contract-templates/{id}/enabled")
@@ -139,7 +140,7 @@ public class ContractController {
     @GetMapping("/contract-templates/{id}/download")
     @RequirePermission("contract:create")
     public ResponseEntity<Resource> downloadTemplate(@PathVariable Long id, @CurrentUser SysUser user) {
-        ContractTemplateService.TemplateResource template = templateService.download(id);
+        ContractTemplateService.TemplateResource template = templateService.download(id, user);
         String encodedName = URLEncoder.encode(template.filename(), StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedName)

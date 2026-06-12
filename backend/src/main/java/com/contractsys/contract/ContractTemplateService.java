@@ -19,7 +19,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class ContractTemplateService {
@@ -35,8 +38,9 @@ public class ContractTemplateService {
         this.eventPublisher = eventPublisher;
     }
 
-    public List<ContractTemplateView> listEnabled() {
+    public List<ContractTemplateView> listEnabled(SysUser user) {
         return templateRepository.findByEnabledTrueOrderByCreatedAtAsc().stream()
+                .filter(template -> isVisibleTo(template, user))
                 .map(ContractTemplateView::from)
                 .toList();
     }
@@ -48,7 +52,8 @@ public class ContractTemplateService {
     }
 
     @Transactional
-    public ContractTemplateView create(String name, String description, String content, MultipartFile file, SysUser operator) {
+    public ContractTemplateView create(String name, String description, String content, String visibleRoles,
+                                       MultipartFile file, SysUser operator) {
         if (name == null || name.isBlank()) {
             throw ApiException.badRequest("模板名称不能为空");
         }
@@ -56,6 +61,7 @@ public class ContractTemplateService {
         template.setName(name.trim());
         template.setDescription(description);
         template.setContent(content == null || content.isBlank() ? name.trim() : content);
+        template.setVisibleRoles(normalizeVisibleRoles(visibleRoles));
         if (file != null && !file.isEmpty()) {
             FileStorageService.StoredFile stored = fileStorageService.store(file);
             template.setOriginalName(stored.originalName());
@@ -91,8 +97,14 @@ public class ContractTemplateService {
         }
     }
 
-    public TemplateResource download(Long id) {
+    public TemplateResource download(Long id, SysUser user) {
         ContractTemplate template = find(id);
+        if (!template.isEnabled()) {
+            throw ApiException.conflict("模板已停用");
+        }
+        if (!isVisibleTo(template, user)) {
+            throw ApiException.forbidden("当前角色不可下载该模板");
+        }
         if (template.getStoredName() != null && !template.getStoredName().isBlank()) {
             Path filePath = fileStorageService.resolve(template.getStoredName());
             if (!Files.exists(filePath)) {
@@ -111,6 +123,33 @@ public class ContractTemplateService {
     private ContractTemplate find(Long id) {
         return templateRepository.findById(id)
                 .orElseThrow(() -> ApiException.notFound("合同模板不存在"));
+    }
+
+    private String normalizeVisibleRoles(String visibleRoles) {
+        if (visibleRoles == null || visibleRoles.isBlank()) {
+            return null;
+        }
+        String value = Arrays.stream(visibleRoles.split(","))
+                .map(String::trim)
+                .filter(role -> !role.isBlank())
+                .distinct()
+                .collect(Collectors.joining(","));
+        return value.isBlank() ? null : value;
+    }
+
+    private boolean isVisibleTo(ContractTemplate template, SysUser user) {
+        if (template.getVisibleRoles() == null || template.getVisibleRoles().isBlank()) {
+            return true;
+        }
+        if (user != null && user.isBuiltInAdmin()) {
+            return true;
+        }
+        Set<String> visibleRoleCodes = Arrays.stream(template.getVisibleRoles().split(","))
+                .map(String::trim)
+                .filter(role -> !role.isBlank())
+                .collect(Collectors.toSet());
+        return user != null && user.getRoles().stream()
+                .anyMatch(role -> visibleRoleCodes.contains(role.getRoleCode()));
     }
 
     private void deleteFileAfterCommit(Path filePath) {

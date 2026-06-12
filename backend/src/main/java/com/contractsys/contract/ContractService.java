@@ -92,8 +92,8 @@ public class ContractService {
         }
         validateAssignee(contract, operator, request.signUserId(), "签订人员", "contract:sign");
         createUniqueTasks(contract, request.countersignUserIds(), TaskType.COUNTERSIGN, "contract:countersign");
-        createUniqueTasks(contract, request.approvalUserIds(), TaskType.APPROVAL, "contract:approve");
-        createTask(contract, request.signUserId(), TaskType.SIGN, "contract:sign");
+        rememberFutureAssignees(contract, request.approvalUserIds(), TaskType.APPROVAL, "contract:approve");
+        rememberFutureAssignees(contract, List.of(request.signUserId()), TaskType.SIGN, "contract:sign");
         changeStatus(contract, ContractStatus.ASSIGNED, operator, "管理员分配合同流程人员");
         return queryService.detail(id, operator);
     }
@@ -122,6 +122,7 @@ public class ContractService {
         finishTask(id, operator, TaskType.FINALIZE, TaskStatus.DONE, "起草人定稿");
         contract.setContent(request.content());
         recordVersion(contract, operator, "起草人定稿");
+        createPendingTasksFromAssignees(contract, TaskType.APPROVAL, "contract:approve");
         changeStatus(contract, ContractStatus.FINALIZED, operator, "起草人定稿");
         return queryService.detail(id, operator);
     }
@@ -163,13 +164,15 @@ public class ContractService {
         contract.setCurrentRound(previousRound + 1);
         contract.setReturnTargetStage(null);
         if ("DRAFT".equals(target)) {
-            cloneWorkflowTasksForNewRound(contract, previousRound);
+            cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.COUNTERSIGN, "contract:countersign", true);
+            cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.APPROVAL, "contract:approve", false);
+            cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.SIGN, "contract:sign", false);
             changeStatus(contract, ContractStatus.ASSIGNED, operator,
                     "第 " + contract.getCurrentRound() + " 轮重新起草后恢复会签");
         } else if ("FINALIZE".equals(target)) {
             createTask(contract, contract.getDrafter().getId(), TaskType.FINALIZE, null);
-            cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.APPROVAL, "contract:approve");
-            cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.SIGN, "contract:sign");
+            cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.APPROVAL, "contract:approve", false);
+            cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.SIGN, "contract:sign", false);
             changeStatus(contract, ContractStatus.COUNTERSIGNED, operator,
                     "第 " + contract.getCurrentRound() + " 轮恢复至重新定稿");
         } else {
@@ -229,6 +232,7 @@ public class ContractService {
             supersedeCurrentRoundPendingTasksByType(contract, TaskType.APPROVAL, "审批已被其他人拒绝，当前轮审批待办已封存");
             changeStatus(contract, ContractStatus.REJECTED, operator, "审批拒绝");
         } else if (!taskRepository.existsByContractIdAndTaskTypeAndTaskStatusAndRound(id, TaskType.APPROVAL, TaskStatus.PENDING, contract.getCurrentRound())) {
+            createPendingTasksFromAssignees(contract, TaskType.SIGN, "contract:sign");
             changeStatus(contract, ContractStatus.APPROVED, operator, "全部审批通过");
         }
         return queryService.detail(id, operator);
@@ -308,7 +312,8 @@ public class ContractService {
         }
         int previousRound = contract.getCurrentRound();
         contract.setCurrentRound(previousRound + 1);
-        cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.APPROVAL, "contract:approve");
+        cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.APPROVAL, "contract:approve", true);
+        cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.SIGN, "contract:sign", false);
         changeStatus(contract, ContractStatus.FINALIZED, operator, "重新提交审批");
         return queryService.detail(id, operator);
     }
@@ -369,6 +374,43 @@ public class ContractService {
         taskRepository.save(task);
     }
 
+    private void rememberFutureAssignees(Contract contract, List<Long> userIds, TaskType taskType, String requiredPermission) {
+        Set<Long> ids = new LinkedHashSet<>(userIds);
+        ids.forEach(userId -> createTask(contract, userId, taskType, requiredPermission, TaskStatus.SUPERSEDED,
+                "已分配，等待前置环节完成后激活"));
+    }
+
+    private void createTask(Contract contract, Long userId, TaskType taskType, String requiredPermission,
+                            TaskStatus status, String opinion) {
+        SysUser assignee = userRepository.findById(userId)
+                .filter(user -> !user.isDeleted())
+                .orElseThrow(() -> ApiException.notFound("用户不存在: " + userId));
+        if (assignee.getStatus() != UserStatus.ENABLED) {
+            throw ApiException.conflict("用户已禁用，不能分配流程任务: " + assignee.getUsername());
+        }
+        if (requiredPermission != null && !assignee.hasPermission(requiredPermission)) {
+            throw ApiException.conflict("用户缺少流程权限 " + requiredPermission + ": " + assignee.getUsername());
+        }
+        ContractTask task = new ContractTask();
+        task.setContract(contract);
+        task.setAssignee(assignee);
+        task.setTaskType(taskType);
+        task.setTaskStatus(status);
+        task.setOpinion(opinion);
+        task.setRound(contract.getCurrentRound());
+        if (status != TaskStatus.PENDING) {
+            task.setOperatedAt(LocalDateTime.now());
+        }
+        taskRepository.save(task);
+    }
+
+    private void createPendingTasksFromAssignees(Contract contract, TaskType taskType, String requiredPermission) {
+        taskRepository.findByContractIdAndTaskTypeAndRound(contract.getId(), taskType, contract.getCurrentRound()).stream()
+                .map(task -> task.getAssignee().getId())
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new))
+                .forEach(userId -> createTask(contract, userId, taskType, requiredPermission));
+    }
+
     private void finishTask(Long contractId, SysUser operator, TaskType taskType, TaskStatus status, String opinion) {
         Contract contract = accessGuard.getContract(contractId);
         ContractTask task = taskRepository.findByContractIdAndAssigneeAndTaskTypeAndTaskStatusAndRound(
@@ -410,17 +452,19 @@ public class ContractService {
         taskRepository.saveAll(tasks);
     }
 
-    private void cloneWorkflowTasksForNewRound(Contract contract, int previousRound) {
-        cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.COUNTERSIGN, "contract:countersign");
-        cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.APPROVAL, "contract:approve");
-        cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.SIGN, "contract:sign");
-    }
-
-    private void cloneAssigneeTasksForNewRound(Contract contract, int previousRound, TaskType taskType, String requiredPermission) {
+    private void cloneAssigneeTasksForNewRound(Contract contract, int previousRound, TaskType taskType,
+                                               String requiredPermission, boolean activate) {
         taskRepository.findByContractIdAndTaskTypeAndRound(contract.getId(), taskType, previousRound).stream()
                 .map(task -> task.getAssignee().getId())
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new))
-                .forEach(userId -> createTask(contract, userId, taskType, requiredPermission));
+                .forEach(userId -> {
+                    if (activate) {
+                        createTask(contract, userId, taskType, requiredPermission);
+                    } else {
+                        createTask(contract, userId, taskType, requiredPermission, TaskStatus.SUPERSEDED,
+                                "已分配，等待前置环节完成后激活");
+                    }
+                });
     }
 
     private TaskType currentReturnableTaskType(Contract contract) {

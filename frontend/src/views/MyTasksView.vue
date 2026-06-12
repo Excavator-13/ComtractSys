@@ -23,7 +23,12 @@ function notifyTasksUpdated() {
 
 const groupedTasks = computed(() => {
   const groups = new Map()
+  const latestRoundByContract = new Map()
   tasks.value.forEach(task => {
+    const round = Number(task.round || 1)
+    latestRoundByContract.set(task.contractId, Math.max(latestRoundByContract.get(task.contractId) || 1, round))
+  })
+  tasks.value.filter(task => Number(task.round || 1) === latestRoundByContract.get(task.contractId)).forEach(task => {
     if (!groups.has(task.contractId)) {
       groups.set(task.contractId, { contractId: task.contractId, contractName: task.contractName, tasks: [] })
     }

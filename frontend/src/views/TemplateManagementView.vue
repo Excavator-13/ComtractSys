@@ -9,7 +9,7 @@ const templates = ref([])
 const error = ref('')
 const loading = ref(false)
 const fileInput = ref(null)
-const form = reactive({ name: '', description: '', content: '', file: null })
+const form = reactive({ name: '', description: '', content: '', visibleRoles: '', file: null })
 const canManage = computed(() => auth.permissions.includes('contract:assign'))
 
 function fileSizeLabel(bytes) {
@@ -50,12 +50,14 @@ async function uploadTemplate() {
   data.append('name', form.name)
   data.append('description', form.description)
   data.append('content', form.content)
+  data.append('visibleRoles', form.visibleRoles)
   if (form.file) data.append('file', form.file)
   try {
     await api.post('/contract-templates', data, { headers: { 'Content-Type': 'multipart/form-data' } })
     form.name = ''
     form.description = ''
     form.content = ''
+    form.visibleRoles = ''
     form.file = null
     if (fileInput.value) fileInput.value.value = ''
     await loadTemplates()
@@ -117,6 +119,7 @@ onMounted(loadTemplates)
       <div class="form-grid" style="margin-top:14px">
         <label>模板名称 *<input v-model="form.name" /></label>
         <label>说明<input v-model="form.description" /></label>
+        <label class="full">可见角色<input v-model="form.visibleRoles" placeholder="ROLE_OPERATOR,ROLE_CONTRACT_ADMIN；留空为全部可见" /></label>
         <label class="full">摘要<textarea v-model="form.content" rows="3" placeholder="模板适用范围、关键条款或使用说明" /></label>
         <label class="full">模板文件<input ref="fileInput" type="file" accept=".doc,.docx,.jpg,.jpeg,.png,.bmp,.gif,.pdf" @change="onFileChange" /></label>
       </div>
@@ -126,13 +129,14 @@ onMounted(loadTemplates)
     <div class="panel">
       <table>
         <thead>
-          <tr><th>模板名称</th><th>说明</th><th>文件</th><th>状态</th><th>操作</th></tr>
+          <tr><th>模板名称</th><th>说明</th><th>文件</th><th>可见角色</th><th>状态</th><th>操作</th></tr>
         </thead>
         <tbody>
           <tr v-for="t in templates" :key="t.id">
             <td>{{ t.name }}</td>
             <td class="muted">{{ t.description || t.content || '-' }}</td>
             <td>{{ t.originalName || '文本模板' }} <span class="muted">{{ fileSizeLabel(t.fileSize) }}</span></td>
+            <td class="muted">{{ t.visibleRoles || '全部' }}</td>
             <td><span class="status" :class="t.enabled ? 'status-signed' : 'status-cancelled'">{{ t.enabled ? '启用' : '停用' }}</span></td>
             <td class="row-actions">
               <button @click="downloadTemplate(t)"><Download :size="14" /> 下载</button>
@@ -142,8 +146,8 @@ onMounted(loadTemplates)
               <button v-if="canManage" @click="deleteTemplate(t)"><Trash2 :size="14" /> 删除</button>
             </td>
           </tr>
-          <tr v-if="!loading && templates.length === 0"><td colspan="5" class="muted" style="text-align:center">暂无模板</td></tr>
-          <tr v-if="loading"><td colspan="5" class="muted" style="text-align:center">加载中...</td></tr>
+          <tr v-if="!loading && templates.length === 0"><td colspan="6" class="muted" style="text-align:center">暂无模板</td></tr>
+          <tr v-if="loading"><td colspan="6" class="muted" style="text-align:center">加载中...</td></tr>
         </tbody>
       </table>
     </div>

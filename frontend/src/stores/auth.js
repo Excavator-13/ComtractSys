@@ -4,7 +4,8 @@ import { api } from '../api'
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     token: localStorage.getItem('token') || '',
-    user: JSON.parse(localStorage.getItem('user') || 'null')
+    user: JSON.parse(localStorage.getItem('user') || 'null'),
+    lastRefreshedAt: 0
   }),
   getters: {
     isLoggedIn: (state) => Boolean(state.token),
@@ -18,10 +19,12 @@ export const useAuthStore = defineStore('auth', {
       localStorage.setItem('token', this.token)
       localStorage.setItem('user', JSON.stringify(this.user))
     },
-    async refreshMe() {
+    async refreshMe(force = false) {
       if (!this.token) return
+      if (!force && Date.now() - this.lastRefreshedAt < 30000) return
       const res = await api.get('/auth/me')
       this.user = res.data
+      this.lastRefreshedAt = Date.now()
       localStorage.setItem('user', JSON.stringify(this.user))
     },
     async updateProfile(payload) {

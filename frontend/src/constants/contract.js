@@ -30,17 +30,18 @@ export function taskLabel(taskType) {
 }
 
 export function taskStatusLabel(status) {
-  const map = { PENDING: '待处理', DONE: '已完成', REJECTED: '已拒绝/打回', SUPERSEDED: '已封存', WITHDRAWN: '已撤回' }
+  const map = { PENDING: '待处理', DONE: '已完成', REJECTED: '已拒绝/打回', SUPERSEDED: '已封存' }
   return map[status] || status || '-'
 }
 
-export function activeStepIndex(status) {
+export function activeStepIndex(status, returnTargetStage = '') {
   if (status === 'DRAFT') return 0
   if (status === 'ASSIGNED') return 1
   if (status === 'COUNTERSIGNED') return 2
   if (status === 'FINALIZED') return 3
   if (status === 'APPROVED') return 4
   if (status === 'SIGNED') return 5
-  if (status === 'REJECTED' || status === 'RETURNED') return 3
+  if (status === 'REJECTED') return 3
+  if (status === 'RETURNED') return returnTargetStage === 'DRAFT' ? 0 : 2
   return 0
 }

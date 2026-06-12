@@ -24,6 +24,7 @@ const signUsers = ref([])
 const error = ref('')
 const success = ref('')
 const activeTab = ref('info')
+const requestedTab = ref('')
 const uploading = ref(false)
 const savingEdit = ref(false)
 const hasPermission = (permission) => auth.permissions.includes(permission)
@@ -110,6 +111,7 @@ async function loadDetail() {
     if (activeTab.value === 'action' && actionForm.type === 'FINALIZE') {
       actionForm.content = contract.value?.content || ''
     }
+    normalizeRequestedTab()
   } catch (err) {
     error.value = err.message
   }
@@ -413,17 +415,14 @@ const canSignCurrent = computed(() => hasPermission('contract:sign') && contract
 const canResubmitCurrent = computed(() => hasPermission('contract:update') && contract.value?.status === 'REJECTED' && Number(contract.value?.drafterId) === Number(auth.user?.id))
 const canCancelCurrent = computed(() => hasPermission('contract:delete') && !['SIGNED', 'CANCELLED'].includes(contract.value?.status))
 const canModifyAttachments = computed(() => hasPermission('contract:update') && contract.value?.status !== 'CANCELLED')
-const canEditCurrent = computed(() => hasPermission('contract:update') && Number(contract.value?.drafterId) === Number(auth.user?.id) && ['DRAFT', 'REJECTED', 'RETURNED'].includes(contract.value?.status))
+const canEditCurrent = computed(() => hasPermission('contract:update') && Number(contract.value?.drafterId) === Number(auth.user?.id) && ['DRAFT', 'COUNTERSIGNED', 'REJECTED', 'RETURNED'].includes(contract.value?.status))
 const canReturnCurrent = computed(() =>
   (canCountersignCurrent.value || canApproveCurrent.value || canSignCurrent.value) && contract.value?.status !== 'RETURNED'
 )
 const canResumeCurrent = computed(() => hasPermission('contract:update') && contract.value?.status === 'RETURNED' && Number(contract.value?.drafterId) === Number(auth.user?.id))
 const canRecallCurrent = computed(() => hasPermission('contract:update') && contract.value?.status === 'ASSIGNED' && Number(contract.value?.drafterId) === Number(auth.user?.id))
-const canWithdrawCurrent = computed(() => tasks.value.some(t =>
-  Number(t.assigneeId) === Number(auth.user?.id) &&
-  Number(t.round || 1) === Number(contract.value?.currentRound || 1) &&
-  ['DONE', 'REJECTED'].includes(t.taskStatus)
-))
+const currentRoundTasks = computed(() => tasks.value.filter(t => Number(t.round || 1) === Number(contract.value?.currentRound || 1)))
+const canWithdrawCurrent = computed(() => currentRoundTasks.value.some(isWithdrawableTask))
 const taskRounds = computed(() => {
   const groups = new Map()
   tasks.value.forEach(task => {
@@ -448,6 +447,52 @@ const actionTitle = computed(() => {
   const map = { COUNTERSIGN: '会签处理', FINALIZE: '定稿处理', APPROVAL: '审批处理', SIGN: '签订处理' }
   return map[actionForm.type] || '流程处理'
 })
+
+function hasTaskPermission(taskType) {
+  const map = {
+    COUNTERSIGN: 'contract:countersign',
+    FINALIZE: 'contract:update',
+    APPROVAL: 'contract:approve'
+  }
+  return map[taskType] ? hasPermission(map[taskType]) : false
+}
+
+function hasCompletedCurrentTask(type) {
+  return currentRoundTasks.value.some(t => t.taskType === type && ['DONE', 'REJECTED'].includes(t.taskStatus))
+}
+
+function isWithdrawableTask(task) {
+  if (!contract.value || !hasTaskPermission(task.taskType)) return false
+  if (Number(task.assigneeId) !== Number(auth.user?.id)) return false
+  if (!['DONE', 'REJECTED'].includes(task.taskStatus)) return false
+  if (task.taskType === 'SIGN' || contract.value.status === 'SIGNED') return false
+  if (task.taskType === 'COUNTERSIGN' && hasCompletedCurrentTask('FINALIZE')) return false
+  if (task.taskType === 'FINALIZE' && hasCompletedCurrentTask('APPROVAL')) return false
+  if (task.taskType === 'APPROVAL' && hasCompletedCurrentTask('SIGN')) return false
+  return true
+}
+
+function canOpenRequestedAction() {
+  if (actionForm.type === 'COUNTERSIGN') return canCountersignCurrent.value
+  if (actionForm.type === 'FINALIZE') return canFinalizeCurrent.value
+  if (actionForm.type === 'APPROVAL') return canApproveCurrent.value
+  if (actionForm.type === 'SIGN') return canSignCurrent.value
+  return false
+}
+
+function normalizeRequestedTab() {
+  if (!requestedTab.value || requestedTab.value === 'rollback') return
+  if (activeTab.value === 'edit' && !canEditCurrent.value) {
+    activeTab.value = 'info'
+    success.value = '该任务已被处理或当前无权编辑'
+  } else if (activeTab.value === 'assign' && !canAssignCurrent.value) {
+    activeTab.value = 'info'
+    success.value = '该分配任务已被处理或当前不可分配'
+  } else if (activeTab.value === 'action' && !canOpenRequestedAction()) {
+    activeTab.value = 'info'
+    success.value = '该任务已被处理或当前不可操作'
+  }
+}
 
 function userName(user) {
   return user.displayName || user.username
@@ -491,14 +536,15 @@ function canPreview(a) {
 }
 
 onMounted(() => {
-  if (route.query.edit === '1') activeTab.value = 'edit'
-  else if (route.query.tab === 'assign') activeTab.value = 'assign'
-  else if (route.query.tab === 'countersign') { actionForm.type = 'COUNTERSIGN'; actionForm.returnTarget = 'DRAFT'; activeTab.value = 'action' }
-  else if (route.query.tab === 'finalize') { actionForm.type = 'FINALIZE'; activeTab.value = 'action' }
-  else if (route.query.tab === 'approve') { actionForm.type = 'APPROVAL'; actionForm.returnTarget = 'FINALIZE'; activeTab.value = 'action' }
-  else if (route.query.tab === 'sign') { actionForm.type = 'SIGN'; actionForm.returnTarget = 'FINALIZE'; activeTab.value = 'action' }
-  else if (route.query.tab === 'rollback') activeTab.value = 'rollback'
-  else if (route.query.tab) activeTab.value = 'info'
+  requestedTab.value = route.query.edit === '1' ? 'edit' : (route.query.tab || '')
+  if (requestedTab.value === 'edit') activeTab.value = 'edit'
+  else if (requestedTab.value === 'assign') activeTab.value = 'assign'
+  else if (requestedTab.value === 'countersign') { actionForm.type = 'COUNTERSIGN'; actionForm.returnTarget = 'DRAFT'; activeTab.value = 'action' }
+  else if (requestedTab.value === 'finalize') { actionForm.type = 'FINALIZE'; activeTab.value = 'action' }
+  else if (requestedTab.value === 'approve') { actionForm.type = 'APPROVAL'; actionForm.returnTarget = 'FINALIZE'; activeTab.value = 'action' }
+  else if (requestedTab.value === 'sign') { actionForm.type = 'SIGN'; actionForm.returnTarget = 'FINALIZE'; activeTab.value = 'action' }
+  else if (requestedTab.value === 'rollback') activeTab.value = 'rollback'
+  else if (requestedTab.value) activeTab.value = 'info'
   loadDetail()
   loadCustomers()
   loadUsers()

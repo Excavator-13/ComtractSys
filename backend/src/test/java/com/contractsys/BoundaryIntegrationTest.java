@@ -470,6 +470,7 @@ class BoundaryIntegrationTest {
 
     @Test
     void contractTemplateFileManagementCoversUploadDownloadDisableAndInvalidFiles() throws Exception {
+        UserLogin operator = createOperatorUser();
         String templateName = unique("资产模板");
         MockMultipartFile pdf = new MockMultipartFile(
                 "file", "template.pdf", "application/pdf", "%PDF-1.4\n模板内容".getBytes());
@@ -496,6 +497,29 @@ class BoundaryIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("template.pdf")));
 
+        String scopedName = unique("限角色模板");
+        String scopedUpload = mockMvc.perform(multipart("/api/v1/contract-templates")
+                        .file(new MockMultipartFile("file", "scoped.pdf", "application/pdf", "%PDF-1.4\nscoped".getBytes()))
+                        .param("name", scopedName)
+                        .param("visibleRoles", "ROLE_CONTRACT_ADMIN")
+                        .header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        long scopedTemplateId = objectMapper.readTree(scopedUpload).path("data").path("id").asLong();
+
+        String operatorTemplateList = mockMvc.perform(get("/api/v1/contract-templates")
+                        .header("Authorization", "Bearer " + operator.token()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        for (JsonNode template : objectMapper.readTree(operatorTemplateList).path("data")) {
+            if (template.path("id").asLong() == scopedTemplateId) {
+                throw new AssertionError("角色不可见模板不应出现在起草参考列表");
+            }
+        }
+        mockMvc.perform(get("/api/v1/contract-templates/" + scopedTemplateId + "/download")
+                        .header("Authorization", "Bearer " + operator.token()))
+                .andExpect(status().isForbidden());
+
         mockMvc.perform(patch("/api/v1/contract-templates/" + templateId + "/enabled")
                         .param("enabled", "false")
                         .header("Authorization", bearer()))
@@ -511,6 +535,9 @@ class BoundaryIntegrationTest {
                 throw new AssertionError("停用模板不应出现在起草参考列表");
             }
         }
+        mockMvc.perform(get("/api/v1/contract-templates/" + templateId + "/download")
+                        .header("Authorization", bearer()))
+                .andExpect(status().isConflict());
 
         MockMultipartFile unsupported = new MockMultipartFile(
                 "file", "bad.exe", "application/octet-stream", "x".getBytes());
@@ -522,6 +549,9 @@ class BoundaryIntegrationTest {
                 .andExpect(jsonPath("$.code").value(40000));
 
         mockMvc.perform(delete("/api/v1/contract-templates/" + templateId)
+                        .header("Authorization", bearer()))
+                .andExpect(status().isOk());
+        mockMvc.perform(delete("/api/v1/contract-templates/" + scopedTemplateId)
                         .header("Authorization", bearer()))
                 .andExpect(status().isOk());
     }

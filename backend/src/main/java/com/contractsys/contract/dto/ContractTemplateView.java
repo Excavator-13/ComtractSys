@@ -10,6 +10,7 @@ public record ContractTemplateView(
         String originalName,
         Long fileSize,
         String contentType,
+        String visibleRoles,
         boolean enabled
 ) {
     public static ContractTemplateView from(ContractTemplate template) {
@@ -21,6 +22,7 @@ public record ContractTemplateView(
                 template.getOriginalName(),
                 template.getFileSize(),
                 template.getContentType(),
+                template.getVisibleRoles(),
                 template.isEnabled()
         );
     }

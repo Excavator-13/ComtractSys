@@ -51,7 +51,7 @@ class CacheSerializationTest {
     @Test
     void templateCacheValueUsesStableCollectionTypes() {
         List<ContractTemplateView> templates = new ArrayList<>();
-        templates.add(new ContractTemplateView(1L, "模板", "说明", "正文", "模板.pdf", 128L, "application/pdf", true));
+        templates.add(new ContractTemplateView(1L, "模板", "说明", "正文", "模板.pdf", 128L, "application/pdf", "ROLE_OPERATOR", true));
 
         byte[] bytes = serializer.serialize(templates);
         String json = new String(bytes, StandardCharsets.UTF_8);

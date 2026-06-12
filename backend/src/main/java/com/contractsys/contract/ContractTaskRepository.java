@@ -6,7 +6,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
-import java.util.Optional;
 
 public interface ContractTaskRepository extends JpaRepository<ContractTask, Long> {
     List<ContractTask> findByContractIdOrderByCreatedAtAsc(Long contractId);
@@ -20,8 +19,6 @@ public interface ContractTaskRepository extends JpaRepository<ContractTask, Long
            "OR (t.taskType = com.contractsys.contract.TaskType.SIGN AND t.contract.status = com.contractsys.contract.ContractStatus.APPROVED)) " +
            "ORDER BY t.createdAt ASC")
     List<ContractTask> findActivePendingTasksByAssignee(@Param("assignee") SysUser assignee);
-    Optional<ContractTask> findByContractIdAndAssigneeAndTaskTypeAndTaskStatus(Long contractId, SysUser assignee, TaskType type, TaskStatus status);
-    boolean existsByContractIdAndTaskTypeAndTaskStatus(Long contractId, TaskType type, TaskStatus status);
     boolean existsByContractIdAndAssigneeId(Long contractId, Long assigneeId);
     long countByTaskStatus(TaskStatus status);
     long countByAssigneeAndTaskStatus(SysUser assignee, TaskStatus status);

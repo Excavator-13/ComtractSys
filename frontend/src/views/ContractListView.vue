@@ -134,7 +134,7 @@ onMounted(() => {
             <td>{{ c.drafterName }}</td>
             <td class="row-actions">
               <button @click="router.push(`/contracts/${c.id}`)"><Eye :size="14" /> 详情</button>
-              <button v-if="hasPermission('contract:update') && Number(c.drafterId) === Number(auth.user?.id) && (c.status === 'DRAFT' || c.status === 'REJECTED' || c.status === 'RETURNED')" @click="editContract(c)"><Pencil :size="14" /> 编辑</button>
+              <button v-if="hasPermission('contract:update') && Number(c.drafterId) === Number(auth.user?.id) && (c.status === 'DRAFT' || c.status === 'COUNTERSIGNED' || c.status === 'REJECTED' || c.status === 'RETURNED')" @click="editContract(c)"><Pencil :size="14" /> 编辑</button>
               <button v-if="hasPermission('contract:delete') && (c.status === 'DRAFT' || c.status === 'CANCELLED')" @click="deleteContract(c)"><Trash2 :size="14" /> 删除</button>
             </td>
           </tr>

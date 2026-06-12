@@ -49,10 +49,13 @@ const router = createRouter({
   ]
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (to.path !== '/login' && to.path !== '/register' && !auth.isLoggedIn) {
     return '/login'
+  }
+  if (to.path !== '/login' && to.path !== '/register' && auth.isLoggedIn) {
+    await auth.refreshMe()
   }
   if (!hasAccess(to.meta.permission, auth.permissions)) {
     return '/dashboard'

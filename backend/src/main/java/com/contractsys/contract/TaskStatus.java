@@ -4,6 +4,5 @@ public enum TaskStatus {
     PENDING,
     DONE,
     REJECTED,
-    SUPERSEDED,
-    WITHDRAWN
+    SUPERSEDED
 }

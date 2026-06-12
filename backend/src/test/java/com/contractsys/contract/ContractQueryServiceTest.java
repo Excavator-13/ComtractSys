@@ -24,7 +24,7 @@ class ContractQueryServiceTest {
     void exportAdvancedQueryUsesTenThousandRowsWithoutPageRequestClamp() {
         ContractRepository contractRepository = mock(ContractRepository.class);
         ContractQueryService service = new ContractQueryService(
-                contractRepository, null, null, null, null, mock(ContractAccessGuard.class));
+                contractRepository, null, null, null, mock(ContractAccessGuard.class));
         when(contractRepository.advancedSearch(
                 anyString(), nullable(ContractStatus.class), nullable(Long.class), nullable(Long.class),
                 nullable(LocalDate.class), nullable(LocalDate.class), nullable(LocalDate.class), nullable(LocalDate.class),
@@ -47,7 +47,7 @@ class ContractQueryServiceTest {
         ContractRepository contractRepository = mock(ContractRepository.class);
         ContractAccessGuard accessGuard = mock(ContractAccessGuard.class);
         ContractQueryService service = new ContractQueryService(
-                contractRepository, null, null, null, null, accessGuard);
+                contractRepository, null, null, null, accessGuard);
         SysUser user = new SysUser();
         user.setId(7L);
         when(accessGuard.hasPermission(user, "contract:assign")).thenReturn(false);

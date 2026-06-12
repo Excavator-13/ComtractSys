@@ -227,6 +227,42 @@ class ContractWorkflowTraversalIntegrationTest {
         opOk(ap1Token, id, "approve", "{\"result\":\"APPROVED\",\"opinion\":\"修改后同意\"}");
         opOk(ap2Token, id, "approve", "{\"result\":\"APPROVED\",\"opinion\":\"同意\"}");
         assertStatus(id, "APPROVED");
+        assertThat(myTaskTypesForContract(signerToken, id)).contains("SIGN");
+
+        opOk(signerToken, id, "sign", "{\"signInfo\":\"重提后签订\",\"signedDate\":\"" + LocalDate.now() + "\"}");
+        assertStatus(id, "SIGNED");
+    }
+
+    @Test
+    void withdrawFinalizeAndApprovalCanContinueToNextStage() throws Exception {
+        long finalizeWithdrawId = driveToFinalized(List.of(cs1Id), List.of(ap1Id), signerId, "撤回定稿合同" + suffix);
+
+        opOk(drafterToken, finalizeWithdrawId, "tasks/withdraw", null);
+        assertStatus(finalizeWithdrawId, "COUNTERSIGNED");
+        assertThat(myTaskTypesForContract(drafterToken, finalizeWithdrawId)).contains("FINALIZE");
+
+        opOk(drafterToken, finalizeWithdrawId, "finalize", "{\"content\":\"撤回后重新定稿\"}");
+        assertStatus(finalizeWithdrawId, "FINALIZED");
+        assertThat(myTaskTypesForContract(ap1Token, finalizeWithdrawId)).contains("APPROVAL");
+
+        opOk(ap1Token, finalizeWithdrawId, "approve", "{\"result\":\"APPROVED\",\"opinion\":\"重新定稿后通过\"}");
+        assertStatus(finalizeWithdrawId, "APPROVED");
+        assertThat(myTaskTypesForContract(signerToken, finalizeWithdrawId)).contains("SIGN");
+
+        long approvalWithdrawId = driveToFinalized(List.of(cs1Id), List.of(ap1Id), signerId, "撤回审批合同" + suffix);
+        opOk(ap1Token, approvalWithdrawId, "approve", "{\"result\":\"APPROVED\",\"opinion\":\"先通过\"}");
+        assertStatus(approvalWithdrawId, "APPROVED");
+
+        opOk(ap1Token, approvalWithdrawId, "tasks/withdraw", null);
+        assertStatus(approvalWithdrawId, "FINALIZED");
+        assertThat(myTaskTypesForContract(ap1Token, approvalWithdrawId)).contains("APPROVAL");
+
+        opOk(ap1Token, approvalWithdrawId, "approve", "{\"result\":\"APPROVED\",\"opinion\":\"撤回后重新通过\"}");
+        assertStatus(approvalWithdrawId, "APPROVED");
+        assertThat(myTaskTypesForContract(signerToken, approvalWithdrawId)).contains("SIGN");
+
+        opOk(signerToken, approvalWithdrawId, "sign", "{\"signInfo\":\"撤回审批后签订\",\"signedDate\":\"" + LocalDate.now() + "\"}");
+        assertStatus(approvalWithdrawId, "SIGNED");
     }
 
     @Test

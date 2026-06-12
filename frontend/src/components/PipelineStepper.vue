@@ -8,7 +8,7 @@ const props = defineProps({
   compact: { type: Boolean, default: false }
 })
 
-const currentIndex = computed(() => activeStepIndex(props.contract?.status))
+const currentIndex = computed(() => activeStepIndex(props.contract?.status, props.contract?.returnTargetStage))
 
 function tasksFor(type) {
   return props.tasks.filter(task => task.taskType === type && Number(task.round || 1) === Number(props.contract?.currentRound || 1))
@@ -25,9 +25,11 @@ function stepState(index, step) {
 function summary(step) {
   const items = tasksFor(step.type)
   if (!items.length) return step.type === 'ASSIGN' ? '待分配' : '未开始'
-  const done = items.filter(task => ['DONE', 'REJECTED'].includes(task.taskStatus)).length
+  const done = items.filter(task => task.taskStatus === 'DONE').length
+  const rejected = items.filter(task => task.taskStatus === 'REJECTED').length
   const pending = items.filter(task => task.taskStatus === 'PENDING').map(task => task.assigneeName).join('、')
   if (pending) return `待 ${pending}`
+  if (rejected) return `${rejected}/${items.length} 已打回`
   return `${done}/${items.length} 完成`
 }
 </script>
