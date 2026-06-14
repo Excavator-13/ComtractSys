@@ -12,7 +12,7 @@
   - assign 时 COUNTERSIGN 建为 PENDING，APPROVAL/SIGN 建为 SUPERSEDED 占位行。
   - finalize 时 createPendingTasksFromAssignees(APPROVAL) 从占位行物化 PENDING。
   - approve 全通过时 createPendingTasksFromAssignees(SIGN) 物化 PENDING。
-  - 退回(return)/恢复(resume)/撤回合同(recall)/重提(resubmit) 各自的克隆与轮次自增。
+  - 退回(return)/恢复(resume)/撤回合同(recall) 各自的克隆与轮次自增。
   - 撤回任务(withdraw) 的 ensureWithdrawAllowed 约束 + rewindStatusForWithdraw 封存下一环节。
 
 抽象角色：drafter=D, countersigner=C1, approver=A1/A2, signer=S。
@@ -111,7 +111,7 @@ def successors(state):
     tasks = list(tasks)
 
     # assign (DRAFT -> ASSIGNED)
-    if status == "DRAFT":
+    if status == "DRAFT" and rt is None:
         nt = list(tasks)
         for c in COUNTERSIGNERS:
             nt.append(("COUNTERSIGN", "PENDING", c, rnd))
@@ -172,7 +172,6 @@ def successors(state):
                     else:
                         nt2.append(t)
                 nt2 = supersede_pending_type(nt2, "APPROVAL", rnd)
-                _add_pending(nt2, "REVISE", DRAFTER, rnd, "reject")
                 yield (f"reject({a})", mk("REJECTED", rnd, None, nt2))
 
     # sign (APPROVED)
@@ -203,18 +202,25 @@ def successors(state):
                 _add_pending(nt, "REVISE", DRAFTER, rnd, "return")
                 yield (f"return({actor},{target})", mk("RETURNED", rnd, target, nt))
 
+    # resume (DRAFT after recall/return-to-draft)
+    if status == "DRAFT" and rt == "DRAFT":
+        nt = list(tasks)
+        for c in assignees_of_type_round(tasks, "COUNTERSIGN", rnd):
+            _add_pending(nt, "COUNTERSIGN", c, rnd, "resume(DRAFT-preserved)")
+        yield ("resume(DRAFT-preserved)", mk("ASSIGNED", rnd, None, nt))
+
     # resume (RETURNED)
     if status == "RETURNED" and rnd < ROUND_CAP:
         nr = rnd + 1
         if rt == "DRAFT":
             nt = [("REVISE", "DONE", t[2], t[3]) if t == ("REVISE", "PENDING", DRAFTER, rnd) else t for t in tasks]
             for c in assignees_of_type_round(tasks, "COUNTERSIGN", rnd):
-                _add_pending(nt, "COUNTERSIGN", c, nr, "resume(DRAFT)")
+                nt.append(("COUNTERSIGN", "SUPERSEDED", c, nr))
             for a in assignees_of_type_round(tasks, "APPROVAL", rnd):
                 nt.append(("APPROVAL", "SUPERSEDED", a, nr))
             for s in assignees_of_type_round(tasks, "SIGN", rnd):
                 nt.append(("SIGN", "SUPERSEDED", s, nr))
-            yield ("resume(DRAFT)", mk("ASSIGNED", nr, None, nt))
+            yield ("resume(DRAFT)", mk("DRAFT", nr, "DRAFT", nt))
         elif rt == "FINALIZE":
             nt = [("REVISE", "DONE", t[2], t[3]) if t == ("REVISE", "PENDING", DRAFTER, rnd) else t for t in tasks]
             nt.append(("FINALIZE", "PENDING", DRAFTER, nr))
@@ -228,20 +234,15 @@ def successors(state):
 
     # recall (ASSIGNED, 无已完成会签)
     if status == "ASSIGNED" and not has_completed(tasks, "COUNTERSIGN", rnd) and rnd < ROUND_CAP:
-        nt = supersede_all_pending(tasks, rnd)
-        yield ("recall", mk("DRAFT", rnd + 1, None, nt))
-
-    # resubmit (REJECTED)
-    if status == "REJECTED" and rnd < ROUND_CAP:
         nr = rnd + 1
-        nt = [("REVISE", "DONE", t[2], t[3]) if t == ("REVISE", "PENDING", DRAFTER, rnd) else t for t in tasks]
+        nt = supersede_all_pending(tasks, rnd)
         for c in assignees_of_type_round(tasks, "COUNTERSIGN", rnd):
             nt.append(("COUNTERSIGN", "SUPERSEDED", c, nr))
         for a in assignees_of_type_round(tasks, "APPROVAL", rnd):
-            _add_pending(nt, "APPROVAL", a, nr, "resubmit")
+            nt.append(("APPROVAL", "SUPERSEDED", a, nr))
         for s in assignees_of_type_round(tasks, "SIGN", rnd):
             nt.append(("SIGN", "SUPERSEDED", s, nr))
-        yield ("resubmit", mk("FINALIZED", nr, None, nt))
+        yield ("recall", mk("DRAFT", nr, "DRAFT", nt))
 
     # withdrawTask
     for actor in [DRAFTER] + list(COUNTERSIGNERS) + list(APPROVERS) + [SIGNER]:
@@ -367,7 +368,7 @@ def main():
         print(f"     该状态可选动作: {outs if outs else '无（完全死锁）'}")
 
     # 缺陷 2：全局卡死，排除 round==ROUND_CAP 的上限假象
-    stuck = [s for s in seen if s[0] not in ("SIGNED", "CANCELLED") and s not in R]
+    stuck = [s for s in seen if s[0] not in ("SIGNED", "CANCELLED", "REJECTED") and s not in R]
     genuine = [s for s in stuck if s[1] < ROUND_CAP]
     print(f"\n[检测2] 全局卡死（可达但无法再走到 SIGNED）: 共 {len(stuck)} 个，"
           f"其中非 CAP 假象(轮次<上限) {len(genuine)} 个")

@@ -314,19 +314,6 @@ async function doWithdrawTask() {
   })
 }
 
-async function doResubmit() {
-  askConfirm('重新提交审批', '确认重新提交审批？所有审批人都需要重新审批，旧审批意见会保留在历史轮次中。', async () => {
-  try {
-    await api.post(`/contracts/${route.params.id}/resubmit`)
-    success.value = '已重新提交审批'
-    await reloadWorkflow()
-    notifyTasksUpdated()
-  } catch (err) {
-    error.value = err.message
-  }
-  })
-}
-
 async function loadTimeline() {
   try {
     const res = await api.get(`/contracts/${route.params.id}/timeline`)
@@ -414,18 +401,21 @@ const canCountersignCurrent = computed(() => hasPermission('contract:countersign
 const canFinalizeCurrent = computed(() => hasPermission('contract:update') && contract.value?.status === 'COUNTERSIGNED' && pendingTask('FINALIZE'))
 const canApproveCurrent = computed(() => hasPermission('contract:approve') && contract.value?.status === 'FINALIZED' && pendingTask('APPROVAL'))
 const canSignCurrent = computed(() => hasPermission('contract:sign') && contract.value?.status === 'APPROVED' && pendingTask('SIGN'))
-const canResubmitCurrent = computed(() => hasPermission('contract:update') && contract.value?.status === 'REJECTED' && Number(contract.value?.drafterId) === Number(auth.user?.id))
 const canCancelCurrent = computed(() => hasPermission('contract:delete') && !['SIGNED', 'CANCELLED'].includes(contract.value?.status))
 const canModifyAttachments = computed(() =>
   hasPermission('contract:update') &&
   Number(contract.value?.drafterId) === Number(auth.user?.id) &&
-  ['DRAFT', 'COUNTERSIGNED'].includes(contract.value?.status)
+  contract.value?.status === 'DRAFT'
 )
-const canEditCurrent = computed(() => hasPermission('contract:update') && Number(contract.value?.drafterId) === Number(auth.user?.id) && ['DRAFT', 'COUNTERSIGNED', 'REJECTED', 'RETURNED'].includes(contract.value?.status))
+const canEditCurrent = computed(() => hasPermission('contract:update') && Number(contract.value?.drafterId) === Number(auth.user?.id) && ['DRAFT', 'COUNTERSIGNED', 'RETURNED'].includes(contract.value?.status))
 const canReturnCurrent = computed(() =>
   (canCountersignCurrent.value || canApproveCurrent.value || canSignCurrent.value) && contract.value?.status !== 'RETURNED'
 )
-const canResumeCurrent = computed(() => hasPermission('contract:update') && contract.value?.status === 'RETURNED' && Number(contract.value?.drafterId) === Number(auth.user?.id))
+const canResumeCurrent = computed(() =>
+  hasPermission('contract:update') &&
+  Number(contract.value?.drafterId) === Number(auth.user?.id) &&
+  (contract.value?.status === 'RETURNED' || (contract.value?.status === 'DRAFT' && contract.value?.returnTargetStage === 'DRAFT'))
+)
 const canRecallCurrent = computed(() => hasPermission('contract:update') && contract.value?.status === 'ASSIGNED' && Number(contract.value?.drafterId) === Number(auth.user?.id))
 const currentRoundTasks = computed(() => tasks.value.filter(t => Number(t.round || 1) === Number(contract.value?.currentRound || 1)))
 const canWithdrawCurrent = computed(() => currentRoundTasks.value.some(isWithdrawableTask))
@@ -584,12 +574,12 @@ onMounted(() => {
         <button :class="{ selected: activeTab === 'timeline' }" @click="activeTab = 'timeline'">流程时间线</button>
         <button :class="{ selected: activeTab === 'versions' }" @click="activeTab = 'versions'">版本历史</button>
         <button :class="{ selected: activeTab === 'rollback' }" @click="activeTab = 'rollback'">回退模型</button>
-        <button v-if="canCountersignCurrent || canFinalizeCurrent || canApproveCurrent || canSignCurrent" :class="{ selected: activeTab === 'action' }" @click="openAction(canCountersignCurrent ? 'COUNTERSIGN' : canFinalizeCurrent ? 'FINALIZE' : canApproveCurrent ? 'APPROVAL' : 'SIGN')">当前处理</button>
+        <button v-if="canCountersignCurrent || canFinalizeCurrent || canApproveCurrent || canSignCurrent" class="transient-tab" :class="{ selected: activeTab === 'action' }" @click="openAction(canCountersignCurrent ? 'COUNTERSIGN' : canFinalizeCurrent ? 'FINALIZE' : canApproveCurrent ? 'APPROVAL' : 'SIGN')">当前处理</button>
         <button :class="{ selected: activeTab === 'attachments' }" @click="activeTab = 'attachments'">
           附件 ({{ attachments.length }})
         </button>
-        <button v-if="canAssignCurrent" :class="{ selected: activeTab === 'assign' }" @click="activeTab = 'assign'">分配人员</button>
-        <button v-if="canEditCurrent" :class="{ selected: activeTab === 'edit' }" @click="activeTab = 'edit'">编辑合同</button>
+        <button v-if="canAssignCurrent" class="transient-tab" :class="{ selected: activeTab === 'assign' }" @click="activeTab = 'assign'">分配人员</button>
+        <button v-if="canEditCurrent" class="transient-tab" :class="{ selected: activeTab === 'edit' }" @click="activeTab = 'edit'">编辑合同</button>
       </div>
 
       <div v-if="activeTab === 'info'" class="tab-content">
@@ -615,9 +605,6 @@ onMounted(() => {
           </button>
           <button v-if="canEditCurrent" @click="activeTab = 'edit'">编辑合同</button>
           <button v-if="canFinalizeCurrent" @click="openAction('FINALIZE')">定稿</button>
-          <button v-if="canResubmitCurrent" @click="doResubmit">
-            <RotateCcw :size="14" /> 重新提交审批
-          </button>
           <button v-if="canApproveCurrent" @click="openAction('APPROVAL')">审批</button>
           <button v-if="canCountersignCurrent" @click="openAction('COUNTERSIGN')">会签</button>
           <button v-if="canSignCurrent" @click="openAction('SIGN')">签订</button>

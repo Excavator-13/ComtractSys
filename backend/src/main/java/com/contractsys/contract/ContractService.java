@@ -153,7 +153,7 @@ public class ContractService {
     public ContractDetailView resume(Long id, SysUser operator) {
         Contract contract = accessGuard.getContractForUpdate(id);
         accessGuard.ensureMutableContract(contract);
-        requireStatus(contract, ContractStatus.RETURNED);
+        requireStatus(contract, ContractStatus.RETURNED, ContractStatus.DRAFT);
         if (!contract.getDrafter().getId().equals(operator.getId())) {
             throw ApiException.forbidden("只有起草人可以恢复打回合同");
         }
@@ -161,17 +161,28 @@ public class ContractService {
         if (target == null || target.isBlank()) {
             throw ApiException.conflict("缺少打回目标，不能恢复");
         }
+        if (contract.getStatus() == ContractStatus.DRAFT) {
+            if (!"DRAFT".equals(target)) {
+                throw ApiException.conflict("当前草稿不支持直接恢复目标: " + target);
+            }
+            createPendingTasksFromAssignees(contract, TaskType.COUNTERSIGN, "contract:countersign");
+            contract.setReturnTargetStage(null);
+            changeStatus(contract, ContractStatus.ASSIGNED, operator,
+                    "第 " + contract.getCurrentRound() + " 轮跳过分配恢复会签");
+            return queryService.detail(id, operator);
+        }
         int previousRound = contract.getCurrentRound();
         finishOptionalTask(contract, operator, TaskType.REVISE, TaskStatus.DONE, "起草人处理打回合同");
         contract.setCurrentRound(previousRound + 1);
-        contract.setReturnTargetStage(null);
         if ("DRAFT".equals(target)) {
-            cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.COUNTERSIGN, "contract:countersign", true);
+            contract.setReturnTargetStage("DRAFT");
+            cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.COUNTERSIGN, "contract:countersign", false);
             cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.APPROVAL, "contract:approve", false);
             cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.SIGN, "contract:sign", false);
-            changeStatus(contract, ContractStatus.ASSIGNED, operator,
-                    "第 " + contract.getCurrentRound() + " 轮重新起草后恢复会签");
+            changeStatus(contract, ContractStatus.DRAFT, operator,
+                    "第 " + contract.getCurrentRound() + " 轮恢复至重新起草");
         } else if ("FINALIZE".equals(target)) {
+            contract.setReturnTargetStage(null);
             createTask(contract, contract.getDrafter().getId(), TaskType.FINALIZE, null);
             cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.COUNTERSIGN, "contract:countersign", false);
             cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.APPROVAL, "contract:approve", false);
@@ -196,9 +207,12 @@ public class ContractService {
             throw ApiException.conflict("已有会签任务完成，不能撤回合同");
         }
         supersedeCurrentRoundPendingTasks(contract, "起草人撤回合同，当前轮待办已封存");
-        contract.setCurrentRound(contract.getCurrentRound() + 1);
-        contract.setReturnTargetStage(null);
-        createAssignTasks(contract);
+        int previousRound = contract.getCurrentRound();
+        contract.setCurrentRound(previousRound + 1);
+        contract.setReturnTargetStage("DRAFT");
+        cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.COUNTERSIGN, "contract:countersign", false);
+        cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.APPROVAL, "contract:approve", false);
+        cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.SIGN, "contract:sign", false);
         changeStatus(contract, ContractStatus.DRAFT, operator, "起草人撤回合同");
         return queryService.detail(id, operator);
     }
@@ -233,7 +247,6 @@ public class ContractService {
         finishTask(id, operator, TaskType.APPROVAL, taskStatus, request.opinion());
         if (taskStatus == TaskStatus.REJECTED) {
             supersedeCurrentRoundPendingTasksByType(contract, TaskType.APPROVAL, "审批已被其他人拒绝，当前轮审批待办已封存");
-            createTask(contract, contract.getDrafter().getId(), TaskType.REVISE, "contract:update");
             changeStatus(contract, ContractStatus.REJECTED, operator, "审批拒绝");
         } else if (!taskRepository.existsByContractIdAndTaskTypeAndTaskStatusAndRound(id, TaskType.APPROVAL, TaskStatus.PENDING, contract.getCurrentRound())) {
             createPendingTasksFromAssignees(contract, TaskType.SIGN, "contract:sign");
@@ -263,7 +276,7 @@ public class ContractService {
         }
         Contract contract = accessGuard.getContractForUpdate(id);
         accessGuard.ensureMutableContract(contract);
-        requireStatus(contract, ContractStatus.DRAFT, ContractStatus.COUNTERSIGNED, ContractStatus.REJECTED, ContractStatus.RETURNED);
+        requireStatus(contract, ContractStatus.DRAFT, ContractStatus.COUNTERSIGNED, ContractStatus.RETURNED);
         if (!contract.getDrafter().getId().equals(operator.getId())) {
             throw ApiException.forbidden("只有起草人可以修改合同");
         }
@@ -311,17 +324,7 @@ public class ContractService {
         Contract contract = accessGuard.getContractForUpdate(id);
         accessGuard.ensureMutableContract(contract);
         requireStatus(contract, ContractStatus.REJECTED);
-        if (!contract.getDrafter().getId().equals(operator.getId())) {
-            throw ApiException.forbidden("只有起草人可以重新提交");
-        }
-        int previousRound = contract.getCurrentRound();
-        finishOptionalTask(contract, operator, TaskType.REVISE, TaskStatus.DONE, "起草人重新提交审批");
-        contract.setCurrentRound(previousRound + 1);
-        cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.COUNTERSIGN, "contract:countersign", false);
-        cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.APPROVAL, "contract:approve", true);
-        cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.SIGN, "contract:sign", false);
-        changeStatus(contract, ContractStatus.FINALIZED, operator, "重新提交审批");
-        return queryService.detail(id, operator);
+        throw ApiException.conflict("已拒绝合同不能重新提交审批");
     }
 
     private void createAssignTasks(Contract contract) {

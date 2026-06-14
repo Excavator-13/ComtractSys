@@ -120,8 +120,8 @@ public class ContractAttachmentService {
         if (!contract.getDrafter().getId().equals(user.getId())) {
             throw ApiException.forbidden("只有起草人可以修改附件");
         }
-        if (!List.of(ContractStatus.DRAFT, ContractStatus.COUNTERSIGNED).contains(contract.getStatus())) {
-            throw ApiException.conflict("仅起草或定稿阶段可以修改附件");
+        if (contract.getStatus() != ContractStatus.DRAFT) {
+            throw ApiException.conflict("仅起草阶段可以修改附件");
         }
     }
 

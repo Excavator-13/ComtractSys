@@ -24,7 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 合同工作流状态机全遍历测试：
  * - 完整生命周期（多会签/多审批并行汇聚）
- * - 拒绝 -> 修改 -> 重新提交回环
+ * - 拒绝终态、打回重新起草两段恢复
  * - 每个状态下的全部非法转换矩阵
  * - 任务归属与重复完成边界
  * - 分配人员校验边界
@@ -199,21 +199,21 @@ class ContractWorkflowTraversalIntegrationTest {
                 .andExpect(jsonPath("$.data.histories").isArray());
     }
 
-    // ---------- 场景 2：拒绝 -> 修改 -> 重新提交回环 ----------
+    // ---------- 场景 2：拒绝终态、打回重新起草两段恢复 ----------
 
     @Test
-    void rejectionAndResubmitLoopResetsApprovalTasks() throws Exception {
-        long id = driveToFinalized(List.of(cs1Id), List.of(ap1Id, ap2Id), signerId, "拒绝回环合同" + suffix);
+    void rejectionDoesNotCreateDrafterEditOrResubmitWork() throws Exception {
+        long id = driveToFinalized(List.of(cs1Id), List.of(ap1Id, ap2Id), signerId, "拒绝终态合同" + suffix);
 
         // 任一审批拒绝立即进入 REJECTED
         opOk(ap1Token, id, "approve", "{\"result\":\"REJECTED\",\"opinion\":\"条款风险高\"}");
         assertStatus(id, "REJECTED");
-        assertThat(myTaskTypesForContract(drafterToken, id)).contains("REVISE");
+        assertThat(myTaskTypesForContract(drafterToken, id)).doesNotContain("REVISE");
 
         // 已拒绝后，另一审批人即使有 PENDING 任务也不能再审批（状态闸门）
         opExpect(ap2Token, id, "approve", "{\"result\":\"APPROVED\",\"opinion\":\"同意\"}", 409);
 
-        // 起草人在 REJECTED 状态可以修改合同（产生新版本）
+        // REJECTED 为拒绝终态，起草人不能修改合同或重新提交审批
         mockMvc.perform(put("/api/v1/contracts/" + id)
                         .header("Authorization", "Bearer " + drafterToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -221,49 +221,27 @@ class ContractWorkflowTraversalIntegrationTest {
                                 {"name":"拒绝回环合同%s","customerId":%d,
                                  "beginDate":"%s","endDate":"%s","content":"按审批意见修改后的正文"}
                                 """.formatted(suffix, customerId, LocalDate.now(), LocalDate.now().plusDays(365))))
-                .andExpect(status().isOk());
-
-        // 非起草人不能重新提交（即使拥有 contract:update 权限）
-        opExpect(cs1Token, id, "resubmit", null, 403);
-
-        // 起草人重新提交 -> FINALIZED，全部审批任务重置为 PENDING
-        opOk(drafterToken, id, "resubmit", null);
-        assertStatus(id, "FINALIZED");
-        assertThat(myTaskTypesForContract(drafterToken, id)).doesNotContain("REVISE");
-        assertThat(myTaskTypesForContract(ap1Token, id)).contains("APPROVAL");
-        assertThat(myTaskTypesForContract(ap2Token, id)).contains("APPROVAL");
-
-        // 第二轮审批全部通过
-        opOk(ap1Token, id, "approve", "{\"result\":\"APPROVED\",\"opinion\":\"修改后同意\"}");
-        opOk(ap2Token, id, "approve", "{\"result\":\"APPROVED\",\"opinion\":\"同意\"}");
-        assertStatus(id, "APPROVED");
-        assertThat(myTaskTypesForContract(signerToken, id)).contains("SIGN");
-
-        opOk(signerToken, id, "sign", "{\"signInfo\":\"重提后签订\",\"signedDate\":\"" + LocalDate.now() + "\"}");
-        assertStatus(id, "SIGNED");
+                .andExpect(status().isConflict());
+        opExpect(drafterToken, id, "resubmit", null, 409);
     }
 
     @Test
-    void resubmitThenReturnToDraftPreservesCountersignAssignees() throws Exception {
+    void returnToDraftPreservesAssigneesAndRequiresDraftResumeBeforeCountersign() throws Exception {
         long id = driveToFinalized(List.of(cs1Id, cs2Id), List.of(ap1Id, ap2Id), signerId,
-                "重提后打回起草合同" + suffix);
-
-        opOk(ap1Token, id, "approve", "{\"result\":\"REJECTED\",\"opinion\":\"审批拒绝后需修改\"}");
-        assertStatus(id, "REJECTED");
-        assertThat(myTaskTypesForContract(drafterToken, id)).contains("REVISE");
-
-        opOk(drafterToken, id, "resubmit", null);
-        assertStatus(id, "FINALIZED");
-        assertThat(myTaskTypesForContract(drafterToken, id)).doesNotContain("REVISE");
-        assertThat(myTaskTypesForContract(ap1Token, id)).contains("APPROVAL");
+                "打回重新起草合同" + suffix);
 
         opOk(ap1Token, id, "return", "{\"targetStage\":\"DRAFT\",\"opinion\":\"退回重新起草\"}");
         assertStatus(id, "RETURNED");
         assertThat(myTaskTypesForContract(drafterToken, id)).contains("REVISE");
 
         opOk(drafterToken, id, "resume", null);
-        assertStatus(id, "ASSIGNED");
+        assertStatus(id, "DRAFT");
         assertThat(myTaskTypesForContract(drafterToken, id)).doesNotContain("REVISE");
+        assertThat(myTaskTypesForContract(cs1Token, id)).doesNotContain("COUNTERSIGN");
+        assertThat(myTaskTypesForContract(cs2Token, id)).doesNotContain("COUNTERSIGN");
+
+        opOk(drafterToken, id, "resume", null);
+        assertStatus(id, "ASSIGNED");
         assertThat(myTaskTypesForContract(cs1Token, id)).contains("COUNTERSIGN");
         assertThat(myTaskTypesForContract(cs2Token, id)).contains("COUNTERSIGN");
 
@@ -285,8 +263,26 @@ class ContractWorkflowTraversalIntegrationTest {
         assertStatus(id, "SIGNED");
 
         JsonNode detail = getJson("/api/v1/contracts/" + id, adminToken).get("data");
-        assertThat(detail.get("contract").get("currentRound").asInt()).isEqualTo(3);
-        assertThat(taskRounds(detail)).contains(1, 2, 3);
+        assertThat(detail.get("contract").get("currentRound").asInt()).isEqualTo(2);
+        assertThat(taskRounds(detail)).contains(1, 2);
+    }
+
+    @Test
+    void recallToDraftPreservesAssigneesAndCanResumeWithoutReassignment() throws Exception {
+        long id = createContract("撤回保留分配合同" + suffix);
+        assign(id, List.of(cs1Id, cs2Id), List.of(ap1Id), signerId);
+        assertStatus(id, "ASSIGNED");
+
+        opOk(drafterToken, id, "recall", null);
+        assertStatus(id, "DRAFT");
+        assertThat(myTaskTypesForContract(assignerToken, id)).doesNotContain("ASSIGN");
+        assertThat(myTaskTypesForContract(cs1Token, id)).doesNotContain("COUNTERSIGN");
+
+        opOk(drafterToken, id, "resume", null);
+        assertStatus(id, "ASSIGNED");
+        assertThat(myTaskTypesForContract(cs1Token, id)).contains("COUNTERSIGN");
+        assertThat(myTaskTypesForContract(cs2Token, id)).contains("COUNTERSIGN");
+        assertThat(myTaskTypesForContract(ap1Token, id)).doesNotContain("APPROVAL");
     }
 
     @Test
@@ -338,7 +334,7 @@ class ContractWorkflowTraversalIntegrationTest {
                 "撤回审批拒绝合同" + suffix);
         opOk(ap1Token, approvalRejectId, "approve", "{\"result\":\"REJECTED\",\"opinion\":\"拒绝后撤回\"}");
         assertStatus(approvalRejectId, "REJECTED");
-        assertThat(myTaskTypesForContract(drafterToken, approvalRejectId)).contains("REVISE");
+        assertThat(myTaskTypesForContract(drafterToken, approvalRejectId)).doesNotContain("REVISE");
 
         opOk(ap1Token, approvalRejectId, "tasks/withdraw", null);
         assertStatus(approvalRejectId, "FINALIZED");
@@ -347,7 +343,7 @@ class ContractWorkflowTraversalIntegrationTest {
     }
 
     @Test
-    void onlyDrafterCanChangeAttachmentsDuringDraftAndFinalizeStage() throws Exception {
+    void onlyDrafterCanChangeAttachmentsDuringDraftStage() throws Exception {
         long id = createContract("附件定稿限制合同" + suffix);
         MockMultipartFile draftFile = new MockMultipartFile(
                 "file", "draft.pdf", "application/pdf", "%PDF-1.4\n附件".getBytes());
@@ -365,7 +361,7 @@ class ContractWorkflowTraversalIntegrationTest {
                         .file(assignedFile)
                         .header("Authorization", "Bearer " + drafterToken))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message").value("仅起草或定稿阶段可以修改附件"));
+                .andExpect(jsonPath("$.message").value("仅起草阶段可以修改附件"));
         mockMvc.perform(delete("/api/v1/attachments/" + attachmentId)
                         .header("Authorization", "Bearer " + cs1Token))
                 .andExpect(status().isForbidden())
@@ -379,26 +375,32 @@ class ContractWorkflowTraversalIntegrationTest {
 
         opOk(cs1Token, id, "countersign", "{\"opinion\":\"同意\"}");
         MockMultipartFile countersignedFile = new MockMultipartFile(
-                "file", "countersigned.pdf", "application/pdf", "%PDF-1.4\n定稿阶段附件".getBytes());
+                "file", "countersigned.pdf", "application/pdf", "%PDF-1.4\n待定稿阶段附件".getBytes());
         mockMvc.perform(multipart("/api/v1/contracts/" + id + "/attachments")
                         .file(countersignedFile)
                         .header("Authorization", "Bearer " + drafterToken))
-                .andExpect(status().isOk());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("仅起草阶段可以修改附件"));
+        mockMvc.perform(delete("/api/v1/attachments/" + attachmentId)
+                        .header("Authorization", "Bearer " + drafterToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("仅起草阶段可以修改附件"));
+
         opOk(drafterToken, id, "finalize", "{\"content\":\"定稿正文\"}");
         assertStatus(id, "FINALIZED");
 
         MockMultipartFile finalizedFile = new MockMultipartFile(
                 "file", "finalized.pdf", "application/pdf", "%PDF-1.4\n定稿后附件".getBytes());
         mockMvc.perform(multipart("/api/v1/contracts/" + id + "/attachments")
-                        .file(finalizedFile)
-                        .header("Authorization", "Bearer " + drafterToken))
+                .file(finalizedFile)
+                .header("Authorization", "Bearer " + drafterToken))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message").value("仅起草或定稿阶段可以修改附件"));
+                .andExpect(jsonPath("$.message").value("仅起草阶段可以修改附件"));
 
         mockMvc.perform(delete("/api/v1/attachments/" + attachmentId)
                         .header("Authorization", "Bearer " + drafterToken))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message").value("仅起草或定稿阶段可以修改附件"));
+                .andExpect(jsonPath("$.message").value("仅起草阶段可以修改附件"));
     }
 
     @Test

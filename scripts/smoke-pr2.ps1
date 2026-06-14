@@ -135,7 +135,7 @@ $approve1 = Invoke-Api GET "/auth/me" $null $approve1Token
 $approve2 = Invoke-Api GET "/auth/me" $null $approve2Token
 $sign = Invoke-Api GET "/auth/me" $null $signToken
 
-Write-Step "Create and assign contract for resubmit test"
+Write-Step "Create and assign contract for return-to-draft test"
 $customer = Invoke-Api POST "/customers" @{
   name = "Smoke Customer $suffix"
   tel = "13800000000"
@@ -150,7 +150,7 @@ $customer = Invoke-Api POST "/customers" @{
 $today = (Get-Date).ToString("yyyy-MM-dd")
 $tomorrow = (Get-Date).AddDays(1).ToString("yyyy-MM-dd")
 $contract = Invoke-Api POST "/contracts" @{
-  name = "Smoke Resubmit $suffix"
+  name = "Smoke Return Draft $suffix"
   customerId = $customer.data.id
   beginDate = $today
   endDate = $tomorrow
@@ -165,19 +165,20 @@ Invoke-Api POST "/contracts/$($contract.data.id)/assign" @{
 
 Invoke-Api POST "/contracts/$($contract.data.id)/countersign" @{ opinion = "counter ok" } $counterToken | Out-Null
 Invoke-Api POST "/contracts/$($contract.data.id)/finalize" @{ content = "final content" } $adminToken | Out-Null
-Invoke-Api POST "/contracts/$($contract.data.id)/approve" @{ result = "APPROVED"; opinion = "approve1 ok" } $approve1Token | Out-Null
-Invoke-Api POST "/contracts/$($contract.data.id)/approve" @{ result = "REJECTED"; opinion = "approve2 reject" } $approve2Token | Out-Null
+Invoke-Api POST "/contracts/$($contract.data.id)/return" @{ targetStage = "DRAFT"; opinion = "return to draft" } $approve1Token | Out-Null
 
-$beforeResubmit = Invoke-Api GET "/contracts/$($contract.data.id)" $null $adminToken
-$approvalBefore = @($beforeResubmit.data.tasks | Where-Object { $_.taskType -eq "APPROVAL" })
-Assert-True (($approvalBefore | Where-Object { $_.taskStatus -eq "DONE" }).Count -eq 1) "one approval task is DONE before resubmit"
-Assert-True (($approvalBefore | Where-Object { $_.taskStatus -eq "REJECTED" }).Count -eq 1) "one approval task is REJECTED before resubmit"
+$returned = Invoke-Api GET "/contracts/$($contract.data.id)" $null $adminToken
+Assert-True ($returned.data.contract.status -eq "RETURNED") "return endpoint sets status to RETURNED"
+Assert-True (($returned.data.tasks | Where-Object { $_.taskType -eq "REVISE" -and $_.taskStatus -eq "PENDING" }).Count -eq 1) "return creates drafter revise task"
 
-Invoke-Api POST "/contracts/$($contract.data.id)/resubmit" $null $adminToken | Out-Null
-$afterResubmit = Invoke-Api GET "/contracts/$($contract.data.id)" $null $adminToken
-$approvalAfter = @($afterResubmit.data.tasks | Where-Object { $_.taskType -eq "APPROVAL" })
-Assert-True (($approvalAfter | Where-Object { $_.taskStatus -eq "PENDING" }).Count -eq 2) "all approval tasks are PENDING after resubmit"
-Assert-True (($approvalAfter | Where-Object { $_.opinion -or $_.operatedAt }).Count -eq 0) "resubmit clears approval opinions and operatedAt"
+Invoke-Api POST "/contracts/$($contract.data.id)/resume" $null $adminToken | Out-Null
+$draftAgain = Invoke-Api GET "/contracts/$($contract.data.id)" $null $adminToken
+Assert-True ($draftAgain.data.contract.status -eq "DRAFT") "resume from returned draft first restores DRAFT"
+
+Invoke-Api POST "/contracts/$($contract.data.id)/resume" $null $adminToken | Out-Null
+$assignedAgain = Invoke-Api GET "/contracts/$($contract.data.id)" $null $adminToken
+Assert-True ($assignedAgain.data.contract.status -eq "ASSIGNED") "second resume skips reassignment and restores ASSIGNED"
+Assert-True (($assignedAgain.data.tasks | Where-Object { $_.taskType -eq "COUNTERSIGN" -and $_.taskStatus -eq "PENDING" }).Count -eq 1) "preserved countersigner is active after resume"
 
 Write-Step "Create and cancel contract"
 $cancelContract = Invoke-Api POST "/contracts" @{

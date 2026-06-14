@@ -602,6 +602,16 @@ th {
   border-color: #126f67;
 }
 
+.tabs button.transient-tab {
+  color: #9a4b00;
+  background: #fff7ed;
+}
+
+.tabs button.transient-tab.selected {
+  color: #9a4b00;
+  border-color: #d97706;
+}
+
 .tab-content {
   min-height: 200px;
 }

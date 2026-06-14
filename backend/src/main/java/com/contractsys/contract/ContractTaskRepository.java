@@ -14,7 +14,7 @@ public interface ContractTaskRepository extends JpaRepository<ContractTask, Long
            "AND t.round = t.contract.currentRound " +
            "AND ((t.taskType = com.contractsys.contract.TaskType.ASSIGN AND t.contract.status = com.contractsys.contract.ContractStatus.DRAFT) " +
            "OR (t.taskType = com.contractsys.contract.TaskType.COUNTERSIGN AND t.contract.status = com.contractsys.contract.ContractStatus.ASSIGNED) " +
-           "OR (t.taskType = com.contractsys.contract.TaskType.REVISE AND t.contract.status IN (com.contractsys.contract.ContractStatus.REJECTED, com.contractsys.contract.ContractStatus.RETURNED)) " +
+           "OR (t.taskType = com.contractsys.contract.TaskType.REVISE AND t.contract.status = com.contractsys.contract.ContractStatus.RETURNED) " +
            "OR (t.taskType = com.contractsys.contract.TaskType.FINALIZE AND t.contract.status = com.contractsys.contract.ContractStatus.COUNTERSIGNED) " +
            "OR (t.taskType = com.contractsys.contract.TaskType.APPROVAL AND t.contract.status = com.contractsys.contract.ContractStatus.FINALIZED) " +
            "OR (t.taskType = com.contractsys.contract.TaskType.SIGN AND t.contract.status = com.contractsys.contract.ContractStatus.APPROVED)) " +
@@ -27,7 +27,7 @@ public interface ContractTaskRepository extends JpaRepository<ContractTask, Long
            "AND t.round = t.contract.currentRound " +
            "AND ((t.taskType = com.contractsys.contract.TaskType.ASSIGN AND t.contract.status = com.contractsys.contract.ContractStatus.DRAFT) " +
            "OR (t.taskType = com.contractsys.contract.TaskType.COUNTERSIGN AND t.contract.status = com.contractsys.contract.ContractStatus.ASSIGNED) " +
-           "OR (t.taskType = com.contractsys.contract.TaskType.REVISE AND t.contract.status IN (com.contractsys.contract.ContractStatus.REJECTED, com.contractsys.contract.ContractStatus.RETURNED)) " +
+           "OR (t.taskType = com.contractsys.contract.TaskType.REVISE AND t.contract.status = com.contractsys.contract.ContractStatus.RETURNED) " +
            "OR (t.taskType = com.contractsys.contract.TaskType.FINALIZE AND t.contract.status = com.contractsys.contract.ContractStatus.COUNTERSIGNED) " +
            "OR (t.taskType = com.contractsys.contract.TaskType.APPROVAL AND t.contract.status = com.contractsys.contract.ContractStatus.FINALIZED) " +
            "OR (t.taskType = com.contractsys.contract.TaskType.SIGN AND t.contract.status = com.contractsys.contract.ContractStatus.APPROVED))")

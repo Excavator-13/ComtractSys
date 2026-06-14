@@ -451,14 +451,17 @@ Finalize-Contract $rejected $users.drafterA "已拒绝"
 Approve-Contract $rejected $users.approveMgr "REJECTED" "预算附件缺失，退回补充。"
 Track-Contract "已拒绝" $rejected
 
-$resubmitted = Create-Contract "演示-重新提交后待审批-$runId" $customers[7].id $customers[7].name $users.drafterB -2 8
-Add-Standard-Attachments $resubmitted $files $users.drafterB @("Docx", "Pdf")
-Assign-Contract $resubmitted $countersignGroupA $approverGroupA $users.signerB $adminToken
-$countersignGroupA | ForEach-Object { Countersign-Contract $resubmitted $_ }
-Finalize-Contract $resubmitted $users.drafterB "重新提交前"
-Approve-Contract $resubmitted $users.approveFinance "REJECTED" "补充付款节点后重新提交。"
-Invoke-Api -Method POST -Path "/contracts/$resubmitted/resubmit" -Token $users.drafterB.token | Out-Null
-Track-Contract "重新提交后待审批" $resubmitted
+$returnedDraft = Create-Contract "演示-打回重新起草后待恢复-$runId" $customers[7].id $customers[7].name $users.drafterB -2 8
+Add-Standard-Attachments $returnedDraft $files $users.drafterB @("Docx", "Pdf")
+Assign-Contract $returnedDraft $countersignGroupA $approverGroupA $users.signerB $adminToken
+$countersignGroupA | ForEach-Object { Countersign-Contract $returnedDraft $_ }
+Finalize-Contract $returnedDraft $users.drafterB "打回重新起草前"
+Invoke-Api -Method POST -Path "/contracts/$returnedDraft/return" -Token $users.approveFinance.token -Body @{
+    targetStage = "DRAFT"
+    opinion = "补充付款节点后重新起草。"
+} | Out-Null
+Invoke-Api -Method POST -Path "/contracts/$returnedDraft/resume" -Token $users.drafterB.token | Out-Null
+Track-Contract "打回重新起草后待恢复" $returnedDraft
 
 $approved = Create-Contract "演示-待签订-审批已全部通过-$runId" $customers[0].id $customers[0].name $users.drafterA -1 12
 Add-Standard-Attachments $approved $files $users.drafterA @("Pdf", "Docx", "Png")
