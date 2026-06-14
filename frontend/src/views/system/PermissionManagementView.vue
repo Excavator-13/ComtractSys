@@ -62,7 +62,10 @@ onMounted(loadPermissions)
 <template>
   <div>
     <div class="section-title">
-      <h2>权限管理</h2>
+      <div>
+        <h2>权限管理</h2>
+        <p class="muted">权限目录为系统固定能力，仅可编辑名称、模块和描述；角色拥有的权限在角色管理中单独勾选调整。</p>
+      </div>
       <div class="actions">
         <div class="input" style="max-width:240px">
           <Search :size="16" />

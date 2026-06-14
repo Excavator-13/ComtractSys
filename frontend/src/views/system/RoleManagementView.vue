@@ -127,7 +127,10 @@ onMounted(() => { loadRoles(); loadPermissions() })
 <template>
   <div>
     <div class="section-title">
-      <h2>角色管理</h2>
+      <div>
+        <h2>角色管理</h2>
+        <p class="muted">每个角色的权限可单独勾选增加或取消；权限种类由系统固定，不在此处新增。</p>
+      </div>
       <button class="primary" @click="openCreate"><Plus :size="16" /> 新增角色</button>
     </div>
 
