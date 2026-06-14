@@ -7,9 +7,7 @@ import { useAuthStore } from '../stores/auth'
 const auth = useAuthStore()
 const templates = ref([])
 const roleOptions = ref([
-  { roleCode: 'ROLE_OPERATOR', roleName: '操作员' },
-  { roleCode: 'ROLE_CONTRACT_ADMIN', roleName: '合同管理员' },
-  { roleCode: 'ROLE_NEW_USER', roleName: '新用户' }
+  { roleCode: 'ROLE_OPERATOR', roleName: '操作员' }
 ])
 const error = ref('')
 const loading = ref(false)

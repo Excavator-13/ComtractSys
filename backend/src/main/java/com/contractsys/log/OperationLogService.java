@@ -1,14 +1,18 @@
 package com.contractsys.log;
 
-import com.contractsys.common.PageRequests;
 import com.contractsys.common.CsvEscaper;
 import com.contractsys.user.SysUser;
+import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -32,22 +36,17 @@ public class OperationLogService {
     }
 
     public Page<OperationLog> list(String keyword, String module, LocalDate startDate, LocalDate endDate, int page, int size) {
-        return operationLogRepository.search(
-                keyword == null ? "" : keyword,
-                module == null ? "" : module,
-                startDate == null ? null : startDate.atStartOfDay(),
-                exclusiveEnd(endDate),
-                PageRequests.of(page, size)
+        return operationLogRepository.findAll(
+                filters(keyword, module, startDate, endDate),
+                PageRequest.of(Math.max(page - 1, 0), Math.min(Math.max(size, 1), 200),
+                        Sort.by(Sort.Direction.DESC, "createdAt"))
         );
     }
 
     public byte[] export(String keyword, String module, LocalDate startDate, LocalDate endDate) {
-        List<OperationLog> logs = operationLogRepository.search(
-                keyword == null ? "" : keyword,
-                module == null ? "" : module,
-                startDate == null ? null : startDate.atStartOfDay(),
-                exclusiveEnd(endDate),
-                org.springframework.data.domain.PageRequest.of(0, 10000)
+        List<OperationLog> logs = operationLogRepository.findAll(
+                filters(keyword, module, startDate, endDate),
+                PageRequest.of(0, 10000, Sort.by(Sort.Direction.DESC, "createdAt"))
         ).getContent();
         StringBuilder sb = new StringBuilder();
         sb.append("\uFEFF");
@@ -72,6 +71,35 @@ public class OperationLogService {
 
     private LocalDateTime exclusiveEnd(LocalDate endDate) {
         return endDate == null ? null : endDate.plusDays(1).atStartOfDay();
+    }
+
+    private Specification<OperationLog> filters(String keyword, String module, LocalDate startDate, LocalDate endDate) {
+        String normalizedKeyword = keyword == null ? "" : keyword.trim();
+        String normalizedModule = module == null ? "" : module.trim();
+        LocalDateTime startAt = startDate == null ? null : startDate.atStartOfDay();
+        LocalDateTime endAt = exclusiveEnd(endDate);
+        return (root, query, builder) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            if (!normalizedKeyword.isBlank()) {
+                String like = "%" + normalizedKeyword + "%";
+                predicates.add(builder.or(
+                        builder.like(root.get("operatorName"), like),
+                        builder.like(root.get("module"), like),
+                        builder.like(root.get("action"), like),
+                        builder.like(root.get("content"), like)
+                ));
+            }
+            if (!normalizedModule.isBlank()) {
+                predicates.add(builder.equal(root.get("module"), normalizedModule));
+            }
+            if (startAt != null) {
+                predicates.add(builder.greaterThanOrEqualTo(root.get("createdAt"), startAt));
+            }
+            if (endAt != null) {
+                predicates.add(builder.lessThan(root.get("createdAt"), endAt));
+            }
+            return builder.and(predicates.toArray(Predicate[]::new));
+        };
     }
 
 }

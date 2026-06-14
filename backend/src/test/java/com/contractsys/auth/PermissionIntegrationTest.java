@@ -12,6 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -206,10 +207,18 @@ class PermissionIntegrationTest {
     @Test
     @Order(2)
     void contractAssignerCanLoadRoleOptionsForTemplateVisibility() throws Exception {
-        mockMvc.perform(get("/api/v1/roles/options")
+        String response = mockMvc.perform(get("/api/v1/roles/options")
                         .header("Authorization", "Bearer " + contractAdminToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[?(@.roleCode == 'ROLE_OPERATOR')].roleName").exists());
+                .andExpect(jsonPath("$.data[?(@.roleCode == 'ROLE_OPERATOR')].roleName").exists())
+                .andReturn().getResponse().getContentAsString();
+
+        java.util.List<String> roleCodes = new java.util.ArrayList<>();
+        for (JsonNode role : objectMapper.readTree(response).path("data")) {
+            roleCodes.add(role.path("roleCode").asText());
+        }
+        assertThat(roleCodes).contains("ROLE_OPERATOR");
+        assertThat(roleCodes).doesNotContain("ROLE_ADMIN", "ROLE_CONTRACT_ADMIN", "ROLE_NEW_USER");
     }
 
     // ========== Operator tests ==========

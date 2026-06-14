@@ -13,6 +13,7 @@ const error = ref('')
 const taskStatusContractMap = {
   ASSIGN: 'DRAFT',
   COUNTERSIGN: 'ASSIGNED',
+  REVISE: 'RETURNED',
   FINALIZE: 'COUNTERSIGNED',
   APPROVAL: 'FINALIZED',
   SIGN: 'APPROVED'
@@ -66,6 +67,7 @@ function openAction(task) {
   const tabMap = {
     ASSIGN: 'assign',
     COUNTERSIGN: 'countersign',
+    REVISE: 'edit',
     FINALIZE: 'finalize',
     APPROVAL: 'approve',
     SIGN: 'sign'
@@ -109,6 +111,9 @@ onMounted(loadTasks)
           </button>
           <button v-if="group.current.taskType === 'COUNTERSIGN'" @click="openAction(group.current)">
             <FileEdit :size="14" /> 会签
+          </button>
+          <button v-if="group.current.taskType === 'REVISE'" @click="openAction(group.current)">
+            <FileEdit :size="14" /> 处理
           </button>
           <button v-if="group.current.taskType === 'FINALIZE'" @click="openAction(group.current)">
             <FileEdit :size="14" /> 定稿

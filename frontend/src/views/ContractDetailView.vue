@@ -442,7 +442,7 @@ const taskRounds = computed(() => {
       round,
       current: round === (contract.value?.currentRound || 1),
       tasks: roundTasks.sort((a, b) => {
-        const order = { ASSIGN: 1, COUNTERSIGN: 2, FINALIZE: 3, APPROVAL: 4, SIGN: 5 }
+      const order = { ASSIGN: 1, COUNTERSIGN: 2, REVISE: 3, FINALIZE: 4, APPROVAL: 5, SIGN: 6 }
         return (order[a.taskType] || 99) - (order[b.taskType] || 99)
       })
     }))

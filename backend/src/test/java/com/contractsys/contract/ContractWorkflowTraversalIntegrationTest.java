@@ -208,6 +208,7 @@ class ContractWorkflowTraversalIntegrationTest {
         // 任一审批拒绝立即进入 REJECTED
         opOk(ap1Token, id, "approve", "{\"result\":\"REJECTED\",\"opinion\":\"条款风险高\"}");
         assertStatus(id, "REJECTED");
+        assertThat(myTaskTypesForContract(drafterToken, id)).contains("REVISE");
 
         // 已拒绝后，另一审批人即使有 PENDING 任务也不能再审批（状态闸门）
         opExpect(ap2Token, id, "approve", "{\"result\":\"APPROVED\",\"opinion\":\"同意\"}", 409);
@@ -228,6 +229,7 @@ class ContractWorkflowTraversalIntegrationTest {
         // 起草人重新提交 -> FINALIZED，全部审批任务重置为 PENDING
         opOk(drafterToken, id, "resubmit", null);
         assertStatus(id, "FINALIZED");
+        assertThat(myTaskTypesForContract(drafterToken, id)).doesNotContain("REVISE");
         assertThat(myTaskTypesForContract(ap1Token, id)).contains("APPROVAL");
         assertThat(myTaskTypesForContract(ap2Token, id)).contains("APPROVAL");
 
@@ -248,16 +250,20 @@ class ContractWorkflowTraversalIntegrationTest {
 
         opOk(ap1Token, id, "approve", "{\"result\":\"REJECTED\",\"opinion\":\"审批拒绝后需修改\"}");
         assertStatus(id, "REJECTED");
+        assertThat(myTaskTypesForContract(drafterToken, id)).contains("REVISE");
 
         opOk(drafterToken, id, "resubmit", null);
         assertStatus(id, "FINALIZED");
+        assertThat(myTaskTypesForContract(drafterToken, id)).doesNotContain("REVISE");
         assertThat(myTaskTypesForContract(ap1Token, id)).contains("APPROVAL");
 
         opOk(ap1Token, id, "return", "{\"targetStage\":\"DRAFT\",\"opinion\":\"退回重新起草\"}");
         assertStatus(id, "RETURNED");
+        assertThat(myTaskTypesForContract(drafterToken, id)).contains("REVISE");
 
         opOk(drafterToken, id, "resume", null);
         assertStatus(id, "ASSIGNED");
+        assertThat(myTaskTypesForContract(drafterToken, id)).doesNotContain("REVISE");
         assertThat(myTaskTypesForContract(cs1Token, id)).contains("COUNTERSIGN");
         assertThat(myTaskTypesForContract(cs2Token, id)).contains("COUNTERSIGN");
 
@@ -313,6 +319,31 @@ class ContractWorkflowTraversalIntegrationTest {
 
         opOk(signerToken, approvalWithdrawId, "sign", "{\"signInfo\":\"撤回审批后签订\",\"signedDate\":\"" + LocalDate.now() + "\"}");
         assertStatus(approvalWithdrawId, "SIGNED");
+    }
+
+    @Test
+    void withdrawingReturnOrRejectionClosesDrafterReviseTask() throws Exception {
+        long countersignReturnId = createContract("撤回会签打回合同" + suffix);
+        assign(countersignReturnId, List.of(cs1Id), List.of(ap1Id), signerId);
+        opOk(cs1Token, countersignReturnId, "return", "{\"targetStage\":\"DRAFT\",\"opinion\":\"退回重新起草\"}");
+        assertStatus(countersignReturnId, "RETURNED");
+        assertThat(myTaskTypesForContract(drafterToken, countersignReturnId)).contains("REVISE");
+
+        opOk(cs1Token, countersignReturnId, "tasks/withdraw", null);
+        assertStatus(countersignReturnId, "ASSIGNED");
+        assertThat(myTaskTypesForContract(drafterToken, countersignReturnId)).doesNotContain("REVISE");
+        assertThat(myTaskTypesForContract(cs1Token, countersignReturnId)).contains("COUNTERSIGN");
+
+        long approvalRejectId = driveToFinalized(List.of(cs1Id), List.of(ap1Id), signerId,
+                "撤回审批拒绝合同" + suffix);
+        opOk(ap1Token, approvalRejectId, "approve", "{\"result\":\"REJECTED\",\"opinion\":\"拒绝后撤回\"}");
+        assertStatus(approvalRejectId, "REJECTED");
+        assertThat(myTaskTypesForContract(drafterToken, approvalRejectId)).contains("REVISE");
+
+        opOk(ap1Token, approvalRejectId, "tasks/withdraw", null);
+        assertStatus(approvalRejectId, "FINALIZED");
+        assertThat(myTaskTypesForContract(drafterToken, approvalRejectId)).doesNotContain("REVISE");
+        assertThat(myTaskTypesForContract(ap1Token, approvalRejectId)).contains("APPROVAL");
     }
 
     @Test

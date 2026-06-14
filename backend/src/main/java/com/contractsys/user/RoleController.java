@@ -12,11 +12,15 @@ import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/v1/roles")
 @RequirePermission("role:manage")
 public class RoleController {
+    private static final String CONTRACT_CREATE_PERMISSION = "contract:create";
+    private static final Set<String> SYSTEM_ADMIN_PERMISSIONS = Set.of("user:manage", "role:manage", "permission:manage");
+
     private final RoleService roleService;
 
     public RoleController(RoleService roleService) {
@@ -32,8 +36,20 @@ public class RoleController {
     @RequirePermission("contract:assign")
     public ApiResponse<List<RoleOptionView>> options(@CurrentUser SysUser user) {
         return ApiResponse.ok(roleService.list().stream()
+                .filter(RoleController::canCreateContracts)
+                .filter(RoleController::isNotSystemAdminRole)
                 .map(role -> new RoleOptionView(role.roleCode(), role.roleName()))
                 .toList());
+    }
+
+    private static boolean canCreateContracts(RoleView role) {
+        return role.permissions().stream()
+                .anyMatch(permission -> CONTRACT_CREATE_PERMISSION.equals(permission.permissionCode()));
+    }
+
+    private static boolean isNotSystemAdminRole(RoleView role) {
+        return role.permissions().stream()
+                .noneMatch(permission -> SYSTEM_ADMIN_PERMISSIONS.contains(permission.permissionCode()));
     }
 
     @PostMapping

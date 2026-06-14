@@ -30,7 +30,7 @@ DRAFTER = "D"
 COUNTERSIGNERS = ("C1",)
 APPROVERS = ("A1",)
 SIGNER = "S"
-ROUND_CAP = 4
+ROUND_CAP = 3
 
 # 状态机阶段顺序，用于 withdraw 选择"最近完成"的任务
 STAGE_ORDER = {"COUNTERSIGN": 1, "FINALIZE": 2, "APPROVAL": 3, "SIGN": 4}
@@ -54,7 +54,8 @@ DUP_CREATIONS = []
 
 def mk(status, rnd, rt, tasks):
     # frozenset 规范化：去掉行为等价的重复行(同 类型/状态/处理人/轮次)，避免占位行累积导致状态爆炸
-    return (status, rnd, rt, tuple(sorted(set(tasks))))
+    normalized = [t for t in tasks if not (t[0] == "REVISE" and t[1] == "DONE")]
+    return (status, rnd, rt, tuple(sorted(set(normalized))))
 
 
 def _add_pending(nt, ttype, assignee, rnd, ctx):
@@ -171,6 +172,7 @@ def successors(state):
                     else:
                         nt2.append(t)
                 nt2 = supersede_pending_type(nt2, "APPROVAL", rnd)
+                _add_pending(nt2, "REVISE", DRAFTER, rnd, "reject")
                 yield (f"reject({a})", mk("REJECTED", rnd, None, nt2))
 
     # sign (APPROVED)
@@ -198,13 +200,14 @@ def successors(state):
                     else:
                         nt.append(t)
                 nt = supersede_all_pending(nt, rnd)
+                _add_pending(nt, "REVISE", DRAFTER, rnd, "return")
                 yield (f"return({actor},{target})", mk("RETURNED", rnd, target, nt))
 
     # resume (RETURNED)
     if status == "RETURNED" and rnd < ROUND_CAP:
         nr = rnd + 1
         if rt == "DRAFT":
-            nt = list(tasks)
+            nt = [("REVISE", "DONE", t[2], t[3]) if t == ("REVISE", "PENDING", DRAFTER, rnd) else t for t in tasks]
             for c in assignees_of_type_round(tasks, "COUNTERSIGN", rnd):
                 _add_pending(nt, "COUNTERSIGN", c, nr, "resume(DRAFT)")
             for a in assignees_of_type_round(tasks, "APPROVAL", rnd):
@@ -213,7 +216,7 @@ def successors(state):
                 nt.append(("SIGN", "SUPERSEDED", s, nr))
             yield ("resume(DRAFT)", mk("ASSIGNED", nr, None, nt))
         elif rt == "FINALIZE":
-            nt = list(tasks)
+            nt = [("REVISE", "DONE", t[2], t[3]) if t == ("REVISE", "PENDING", DRAFTER, rnd) else t for t in tasks]
             nt.append(("FINALIZE", "PENDING", DRAFTER, nr))
             for c in assignees_of_type_round(tasks, "COUNTERSIGN", rnd):
                 nt.append(("COUNTERSIGN", "SUPERSEDED", c, nr))
@@ -231,7 +234,7 @@ def successors(state):
     # resubmit (REJECTED)
     if status == "REJECTED" and rnd < ROUND_CAP:
         nr = rnd + 1
-        nt = list(tasks)
+        nt = [("REVISE", "DONE", t[2], t[3]) if t == ("REVISE", "PENDING", DRAFTER, rnd) else t for t in tasks]
         for c in assignees_of_type_round(tasks, "COUNTERSIGN", rnd):
             nt.append(("COUNTERSIGN", "SUPERSEDED", c, nr))
         for a in assignees_of_type_round(tasks, "APPROVAL", rnd):
@@ -267,10 +270,12 @@ def successors(state):
                 nt.append(t)
         # rewind
         if ttype == "COUNTERSIGN":
+            nt = supersede_pending_type(nt, "REVISE", rnd)
             nt = supersede_pending_type(nt, "FINALIZE", rnd); ns = "ASSIGNED"
         elif ttype == "FINALIZE":
             nt = supersede_pending_type(nt, "APPROVAL", rnd); ns = "COUNTERSIGNED"
         elif ttype == "APPROVAL":
+            nt = supersede_pending_type(nt, "REVISE", rnd)
             nt = supersede_pending_type(nt, "SIGN", rnd); ns = "FINALIZED"
         else:
             continue

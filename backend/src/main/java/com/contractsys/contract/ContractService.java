@@ -143,6 +143,7 @@ public class ContractService {
         task.setOperatedAt(LocalDateTime.now());
         supersedeCurrentRoundPendingTasks(contract, "合同已被打回，当前轮待办已封存");
         contract.setReturnTargetStage(request.targetStage());
+        createTask(contract, contract.getDrafter().getId(), TaskType.REVISE, "contract:update");
         changeStatus(contract, ContractStatus.RETURNED, operator,
                 "第 " + contract.getCurrentRound() + " 轮打回至" + returnTargetLabel(request.targetStage()));
         return queryService.detail(id, operator);
@@ -161,6 +162,7 @@ public class ContractService {
             throw ApiException.conflict("缺少打回目标，不能恢复");
         }
         int previousRound = contract.getCurrentRound();
+        finishOptionalTask(contract, operator, TaskType.REVISE, TaskStatus.DONE, "起草人处理打回合同");
         contract.setCurrentRound(previousRound + 1);
         contract.setReturnTargetStage(null);
         if ("DRAFT".equals(target)) {
@@ -231,6 +233,7 @@ public class ContractService {
         finishTask(id, operator, TaskType.APPROVAL, taskStatus, request.opinion());
         if (taskStatus == TaskStatus.REJECTED) {
             supersedeCurrentRoundPendingTasksByType(contract, TaskType.APPROVAL, "审批已被其他人拒绝，当前轮审批待办已封存");
+            createTask(contract, contract.getDrafter().getId(), TaskType.REVISE, "contract:update");
             changeStatus(contract, ContractStatus.REJECTED, operator, "审批拒绝");
         } else if (!taskRepository.existsByContractIdAndTaskTypeAndTaskStatusAndRound(id, TaskType.APPROVAL, TaskStatus.PENDING, contract.getCurrentRound())) {
             createPendingTasksFromAssignees(contract, TaskType.SIGN, "contract:sign");
@@ -312,6 +315,7 @@ public class ContractService {
             throw ApiException.forbidden("只有起草人可以重新提交");
         }
         int previousRound = contract.getCurrentRound();
+        finishOptionalTask(contract, operator, TaskType.REVISE, TaskStatus.DONE, "起草人重新提交审批");
         contract.setCurrentRound(previousRound + 1);
         cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.COUNTERSIGN, "contract:countersign", false);
         cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.APPROVAL, "contract:approve", true);
@@ -423,6 +427,16 @@ public class ContractService {
         task.setOperatedAt(LocalDateTime.now());
     }
 
+    private void finishOptionalTask(Contract contract, SysUser operator, TaskType taskType, TaskStatus status, String opinion) {
+        taskRepository.findByContractIdAndAssigneeAndTaskTypeAndTaskStatusAndRound(
+                        contract.getId(), operator, taskType, TaskStatus.PENDING, contract.getCurrentRound())
+                .ifPresent(task -> {
+                    task.setTaskStatus(status);
+                    task.setOpinion(opinion);
+                    task.setOperatedAt(LocalDateTime.now());
+                });
+    }
+
     private void completeRemainingPendingTasks(Long contractId, TaskType taskType, String opinion) {
         List<ContractTask> tasks = taskRepository.findByContractIdAndTaskTypeAndTaskStatus(contractId, taskType, TaskStatus.PENDING);
         for (ContractTask task : tasks) {
@@ -505,6 +519,7 @@ public class ContractService {
     private void rewindStatusForWithdraw(Contract contract, ContractTask task, SysUser operator) {
         switch (task.getTaskType()) {
             case COUNTERSIGN -> {
+                supersedeCurrentRoundPendingTasksByType(contract, TaskType.REVISE, "打回已撤回，起草处理待办已关闭");
                 supersedeCurrentRoundPendingTasksByType(contract, TaskType.FINALIZE, "会签撤回，定稿待办已封存");
                 changeStatus(contract, ContractStatus.ASSIGNED, operator, "撤回会签意见");
             }
@@ -513,6 +528,7 @@ public class ContractService {
                 changeStatus(contract, ContractStatus.COUNTERSIGNED, operator, "撤回定稿");
             }
             case APPROVAL -> {
+                supersedeCurrentRoundPendingTasksByType(contract, TaskType.REVISE, "审批拒绝或打回已撤回，起草处理待办已关闭");
                 supersedeCurrentRoundPendingTasksByType(contract, TaskType.SIGN, "审批撤回，签订待办已封存");
                 changeStatus(contract, ContractStatus.FINALIZED, operator, "撤回审批意见");
             }

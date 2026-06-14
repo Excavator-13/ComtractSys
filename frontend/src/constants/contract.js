@@ -19,14 +19,15 @@ export const workflowSteps = [
   { type: 'SIGN', label: '签订', status: 'APPROVED' }
 ]
 
-export const taskOrder = { ASSIGN: 1, COUNTERSIGN: 2, FINALIZE: 3, APPROVAL: 4, SIGN: 5 }
+export const taskOrder = { ASSIGN: 1, COUNTERSIGN: 2, REVISE: 3, FINALIZE: 4, APPROVAL: 5, SIGN: 6 }
+export const taskLabels = { ASSIGN: '分配', COUNTERSIGN: '会签', REVISE: '起草处理', FINALIZE: '定稿', APPROVAL: '审批', SIGN: '签订' }
 
 export function contractStatusLabel(status) {
   return contractStatuses.find(item => item.value === status)?.label || status || '-'
 }
 
 export function taskLabel(taskType) {
-  return workflowSteps.find(item => item.type === taskType)?.label || taskType || '-'
+  return taskLabels[taskType] || taskType || '-'
 }
 
 export function taskStatusLabel(status) {
