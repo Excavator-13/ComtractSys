@@ -40,7 +40,7 @@ public class ContractAttachmentService {
     public AttachmentView upload(Long contractId, MultipartFile file, SysUser user) {
         Contract contract = accessGuard.getContract(contractId);
         accessGuard.ensureCanModifyContract(contract, user);
-        ensureAttachmentsMutable(contract);
+        ensureAttachmentsMutable(contract, user);
         Attachment attachment = save(contract, file, user);
         return AttachmentView.from(attachment);
     }
@@ -52,7 +52,7 @@ public class ContractAttachmentService {
         }
         Contract contract = accessGuard.getContract(contractId);
         accessGuard.ensureCanModifyContract(contract, user);
-        ensureAttachmentsMutable(contract);
+        ensureAttachmentsMutable(contract, user);
         files.stream()
                 .filter(file -> file != null && !file.isEmpty())
                 .forEach(file -> save(contract, file, user));
@@ -86,7 +86,7 @@ public class ContractAttachmentService {
         Attachment attachment = attachmentRepository.findById(attachmentId)
                 .orElseThrow(() -> ApiException.notFound("附件不存在"));
         accessGuard.ensureCanModifyContract(attachment.getContract(), user);
-        ensureAttachmentsMutable(attachment.getContract());
+        ensureAttachmentsMutable(attachment.getContract(), user);
         Path filePath = fileStorageService.resolve(attachment.getStoredName());
         attachmentRepository.delete(attachment);
         eventPublisher.publishEvent(new OperationLogEvent(user, "CONTRACT", "删除附件", "ATTACHMENT", attachment.getId(),
@@ -116,15 +116,12 @@ public class ContractAttachmentService {
         return attachment;
     }
 
-    private void ensureAttachmentsMutable(Contract contract) {
-        if (!List.of(
-                ContractStatus.DRAFT,
-                ContractStatus.ASSIGNED,
-                ContractStatus.COUNTERSIGNED,
-                ContractStatus.REJECTED,
-                ContractStatus.RETURNED
-        ).contains(contract.getStatus())) {
-            throw ApiException.conflict("合同定稿后不能修改附件");
+    private void ensureAttachmentsMutable(Contract contract, SysUser user) {
+        if (!contract.getDrafter().getId().equals(user.getId())) {
+            throw ApiException.forbidden("只有起草人可以修改附件");
+        }
+        if (!List.of(ContractStatus.DRAFT, ContractStatus.COUNTERSIGNED).contains(contract.getStatus())) {
+            throw ApiException.conflict("仅起草或定稿阶段可以修改附件");
         }
     }
 

@@ -316,7 +316,7 @@ class ContractWorkflowTraversalIntegrationTest {
     }
 
     @Test
-    void attachmentsCannotBeChangedAfterFinalized() throws Exception {
+    void onlyDrafterCanChangeAttachmentsDuringDraftAndFinalizeStage() throws Exception {
         long id = createContract("附件定稿限制合同" + suffix);
         MockMultipartFile draftFile = new MockMultipartFile(
                 "file", "draft.pdf", "application/pdf", "%PDF-1.4\n附件".getBytes());
@@ -328,7 +328,31 @@ class ContractWorkflowTraversalIntegrationTest {
         long attachmentId = objectMapper.readTree(uploadResponse).path("data").path("id").asLong();
 
         assign(id, List.of(cs1Id), List.of(ap1Id), signerId);
+        MockMultipartFile assignedFile = new MockMultipartFile(
+                "file", "assigned.pdf", "application/pdf", "%PDF-1.4\n待分配后附件".getBytes());
+        mockMvc.perform(multipart("/api/v1/contracts/" + id + "/attachments")
+                        .file(assignedFile)
+                        .header("Authorization", "Bearer " + drafterToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("仅起草或定稿阶段可以修改附件"));
+        mockMvc.perform(delete("/api/v1/attachments/" + attachmentId)
+                        .header("Authorization", "Bearer " + cs1Token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("只有起草人可以修改附件"));
+        mockMvc.perform(get("/api/v1/attachments/" + attachmentId + "/download")
+                        .header("Authorization", "Bearer " + cs1Token))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/attachments/" + attachmentId + "/preview")
+                        .header("Authorization", "Bearer " + cs1Token))
+                .andExpect(status().isOk());
+
         opOk(cs1Token, id, "countersign", "{\"opinion\":\"同意\"}");
+        MockMultipartFile countersignedFile = new MockMultipartFile(
+                "file", "countersigned.pdf", "application/pdf", "%PDF-1.4\n定稿阶段附件".getBytes());
+        mockMvc.perform(multipart("/api/v1/contracts/" + id + "/attachments")
+                        .file(countersignedFile)
+                        .header("Authorization", "Bearer " + drafterToken))
+                .andExpect(status().isOk());
         opOk(drafterToken, id, "finalize", "{\"content\":\"定稿正文\"}");
         assertStatus(id, "FINALIZED");
 
@@ -338,12 +362,12 @@ class ContractWorkflowTraversalIntegrationTest {
                         .file(finalizedFile)
                         .header("Authorization", "Bearer " + drafterToken))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message").value("合同定稿后不能修改附件"));
+                .andExpect(jsonPath("$.message").value("仅起草或定稿阶段可以修改附件"));
 
         mockMvc.perform(delete("/api/v1/attachments/" + attachmentId)
                         .header("Authorization", "Bearer " + drafterToken))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message").value("合同定稿后不能修改附件"));
+                .andExpect(jsonPath("$.message").value("仅起草或定稿阶段可以修改附件"));
     }
 
     @Test

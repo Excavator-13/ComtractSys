@@ -15,6 +15,7 @@ const stats = reactive({ total: 0, draft: 0, assigned: 0, signed: 0, rejected: 0
 const monthlyStats = ref([])
 const error = ref('')
 const canViewContracts = computed(() => auth.permissions.includes('contract:view'))
+const canViewGlobalStats = computed(() => auth.permissions.includes('contract:query'))
 const canCreateContract = computed(() => auth.permissions.includes('contract:create'))
 const canViewTasks = computed(() =>
   auth.permissions.some(p => ['contract:assign', 'contract:countersign', 'contract:approve', 'contract:sign', 'contract:update'].includes(p))
@@ -24,9 +25,12 @@ async function loadData() {
   error.value = ''
   if (canViewContracts.value) {
     try {
+      const monthlyRequest = canViewGlobalStats.value
+        ? api.get('/statistics/contracts/monthly').then(res => monthlyStats.value = res.data || [])
+        : Promise.resolve([])
       const [statisticsRes, _monthlyRes, contractsRes] = await Promise.all([
         api.get('/statistics'),
-        api.get('/statistics/contracts/monthly').then(res => monthlyStats.value = res.data || []).catch(() => []),
+        monthlyRequest,
         api.get('/contracts', { params: { page: 1, size: 10 } })
       ])
       Object.assign(stats, statisticsRes.data)
@@ -100,17 +104,17 @@ onMounted(loadData)
           <strong>{{ item.count }}</strong>
         </button>
       </div>
-      <div class="section-title" style="margin-top:18px">
+      <div v-if="canViewGlobalStats" class="section-title" style="margin-top:18px">
         <h2>月度合同量</h2>
       </div>
-      <div v-if="monthlyStats.length" class="chart-bars">
+      <div v-if="canViewGlobalStats && monthlyStats.length" class="chart-bars">
         <div v-for="item in monthlyStats" :key="item.month" class="chart-bar">
           <span :style="{ height: `${Math.max(8, ((item.count || 0) / monthlyMax) * 120)}px` }"></span>
           <small>{{ item.month }}</small>
           <strong>{{ item.count }}</strong>
         </div>
       </div>
-      <p v-else class="empty-hint">暂无月度统计</p>
+      <p v-else-if="canViewGlobalStats" class="empty-hint">暂无月度统计</p>
     </section>
 
     <section v-if="canViewContracts" class="panel">

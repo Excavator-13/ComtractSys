@@ -417,7 +417,9 @@ const canSignCurrent = computed(() => hasPermission('contract:sign') && contract
 const canResubmitCurrent = computed(() => hasPermission('contract:update') && contract.value?.status === 'REJECTED' && Number(contract.value?.drafterId) === Number(auth.user?.id))
 const canCancelCurrent = computed(() => hasPermission('contract:delete') && !['SIGNED', 'CANCELLED'].includes(contract.value?.status))
 const canModifyAttachments = computed(() =>
-  hasPermission('contract:update') && ['DRAFT', 'ASSIGNED', 'COUNTERSIGNED', 'REJECTED', 'RETURNED'].includes(contract.value?.status)
+  hasPermission('contract:update') &&
+  Number(contract.value?.drafterId) === Number(auth.user?.id) &&
+  ['DRAFT', 'COUNTERSIGNED'].includes(contract.value?.status)
 )
 const canEditCurrent = computed(() => hasPermission('contract:update') && Number(contract.value?.drafterId) === Number(auth.user?.id) && ['DRAFT', 'COUNTERSIGNED', 'REJECTED', 'RETURNED'].includes(contract.value?.status))
 const canReturnCurrent = computed(() =>
