@@ -412,69 +412,69 @@ Add-Standard-Attachments $draft $files $users.drafterA @("Pdf", "Docx")
 Track-Contract "待分配" $draft
 
 $assignedNone = Create-Contract "演示-待会签-尚无人处理-$runId" $customers[1].id $customers[1].name $users.drafterA -8 12
-Assign-Contract $assignedNone $countersignGroupA $approverGroupA $users.signerA $adminToken
 Add-Standard-Attachments $assignedNone $files $users.drafterA @("Pdf")
+Assign-Contract $assignedNone $countersignGroupA $approverGroupA $users.signerA $adminToken
 Track-Contract "待会签-无人处理" $assignedNone
 
 $assignedPartial = Create-Contract "演示-待会签-部分已会签-$runId" $customers[2].id $customers[2].name $users.drafterB -7 10
+Add-Standard-Attachments $assignedPartial $files $users.drafterB @("Png")
 Assign-Contract $assignedPartial $countersignGroupA $approverGroupB $users.signerB $adminToken
 Countersign-Contract $assignedPartial $users.legal1 "法务条款无异议，财务和风控继续确认。"
-Add-Standard-Attachments $assignedPartial $files $users.drafterB @("Png")
 Track-Contract "待会签-部分完成" $assignedPartial
 
 $counterSigned = Create-Contract "演示-待定稿-全部会签完成-$runId" $customers[3].id $customers[3].name $users.drafterB -6 9
+Add-Standard-Attachments $counterSigned $files $users.drafterB @("Pdf", "Gif")
 Assign-Contract $counterSigned $countersignGroupB $approverGroupA $users.signerA $adminToken
 $countersignGroupB | ForEach-Object { Countersign-Contract $counterSigned $_ }
-Add-Standard-Attachments $counterSigned $files $users.drafterB @("Pdf", "Gif")
 Track-Contract "待定稿" $counterSigned
 
 $finalizedNone = Create-Contract "演示-待审批-尚无人审批-$runId" $customers[4].id $customers[4].name $users.drafterC -5 12
+Add-Standard-Attachments $finalizedNone $files $users.drafterC @("Docx")
 Assign-Contract $finalizedNone $countersignGroupB $approverGroupB $users.signerB $adminToken
 $countersignGroupB | ForEach-Object { Countersign-Contract $finalizedNone $_ }
 Finalize-Contract $finalizedNone $users.drafterC "待审批-尚无人审批"
-Add-Standard-Attachments $finalizedNone $files $users.drafterC @("Docx")
 Track-Contract "待审批-无人处理" $finalizedNone
 
 $finalizedPartial = Create-Contract "演示-待审批-部分已通过-$runId" $customers[5].id $customers[5].name $users.drafterC -4 12
+Add-Standard-Attachments $finalizedPartial $files $users.drafterC @("Pdf", "Png")
 Assign-Contract $finalizedPartial $countersignGroupA $approverGroupB $users.signerA $adminToken
 $countersignGroupA | ForEach-Object { Countersign-Contract $finalizedPartial $_ }
 Finalize-Contract $finalizedPartial $users.drafterC "待审批-部分已通过"
 Approve-Contract $finalizedPartial $users.approveMgr "APPROVED" "部门审批通过，等待法务和财务审批。"
-Add-Standard-Attachments $finalizedPartial $files $users.drafterC @("Pdf", "Png")
 Track-Contract "待审批-部分通过" $finalizedPartial
 
 $rejected = Create-Contract "演示-已拒绝-审批退回-$runId" $customers[6].id $customers[6].name $users.drafterA -3 8
+Add-Standard-Attachments $rejected $files $users.drafterA @("Pdf")
 Assign-Contract $rejected $countersignGroupB $approverGroupA $users.signerA $adminToken
 $countersignGroupB | ForEach-Object { Countersign-Contract $rejected $_ }
 Finalize-Contract $rejected $users.drafterA "已拒绝"
 Approve-Contract $rejected $users.approveMgr "REJECTED" "预算附件缺失，退回补充。"
-Add-Standard-Attachments $rejected $files $users.drafterA @("Pdf")
 Track-Contract "已拒绝" $rejected
 
 $resubmitted = Create-Contract "演示-重新提交后待审批-$runId" $customers[7].id $customers[7].name $users.drafterB -2 8
+Add-Standard-Attachments $resubmitted $files $users.drafterB @("Docx", "Pdf")
 Assign-Contract $resubmitted $countersignGroupA $approverGroupA $users.signerB $adminToken
 $countersignGroupA | ForEach-Object { Countersign-Contract $resubmitted $_ }
 Finalize-Contract $resubmitted $users.drafterB "重新提交前"
 Approve-Contract $resubmitted $users.approveFinance "REJECTED" "补充付款节点后重新提交。"
 Invoke-Api -Method POST -Path "/contracts/$resubmitted/resubmit" -Token $users.drafterB.token | Out-Null
-Add-Standard-Attachments $resubmitted $files $users.drafterB @("Docx", "Pdf")
 Track-Contract "重新提交后待审批" $resubmitted
 
 $approved = Create-Contract "演示-待签订-审批已全部通过-$runId" $customers[0].id $customers[0].name $users.drafterA -1 12
+Add-Standard-Attachments $approved $files $users.drafterA @("Pdf", "Docx", "Png")
 Assign-Contract $approved $countersignGroupB $approverGroupA $users.signerA $adminToken
 $countersignGroupB | ForEach-Object { Countersign-Contract $approved $_ }
 Finalize-Contract $approved $users.drafterA "待签订"
 $approverGroupA | ForEach-Object { Approve-Contract $approved $_ }
-Add-Standard-Attachments $approved $files $users.drafterA @("Pdf", "Docx", "Png")
 Track-Contract "待签订" $approved
 
 $signed = Create-Contract "演示-已签订-完整归档-$runId" $customers[1].id $customers[1].name $users.drafterB -20 24
+Add-Standard-Attachments $signed $files $users.drafterB @("Pdf", "Docx", "Png", "Gif")
 Assign-Contract $signed $countersignGroupA $approverGroupB $users.signerB $adminToken
 $countersignGroupA | ForEach-Object { Countersign-Contract $signed $_ }
 Finalize-Contract $signed $users.drafterB "已签订"
 $approverGroupB | ForEach-Object { Approve-Contract $signed $_ }
 Sign-Contract $signed $users.signerB
-Add-Standard-Attachments $signed $files $users.drafterB @("Pdf", "Docx", "Png", "Gif")
 Track-Contract "已签订" $signed
 
 $cancelledDraft = Create-Contract "演示-已取消-起草后取消-$runId" $customers[2].id $customers[2].name $users.drafterC 1 6
@@ -482,9 +482,9 @@ Invoke-Api -Method POST -Path "/contracts/$cancelledDraft/cancel" -Token $adminT
 Track-Contract "已取消-起草后取消" $cancelledDraft
 
 $cancelledFlow = Create-Contract "演示-已取消-分配后取消-$runId" $customers[3].id $customers[3].name $users.drafterC 2 6
+Add-Standard-Attachments $cancelledFlow $files $users.drafterC @("Pdf")
 Assign-Contract $cancelledFlow $countersignGroupB $approverGroupA $users.signerA $adminToken
 Countersign-Contract $cancelledFlow $users.legal2
-Add-Standard-Attachments $cancelledFlow $files $users.drafterC @("Pdf")
 Invoke-Api -Method POST -Path "/contracts/$cancelledFlow/cancel" -Token $adminToken | Out-Null
 Track-Contract "已取消-分配后取消" $cancelledFlow
 
