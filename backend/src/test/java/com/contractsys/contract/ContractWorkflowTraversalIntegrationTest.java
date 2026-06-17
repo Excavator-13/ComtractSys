@@ -209,6 +209,7 @@ class ContractWorkflowTraversalIntegrationTest {
         opOk(ap1Token, id, "approve", "{\"result\":\"REJECTED\",\"opinion\":\"条款风险高\"}");
         assertStatus(id, "REJECTED");
         assertThat(myTaskTypesForContract(drafterToken, id)).doesNotContain("REVISE");
+        assertThat(myTaskTypesForContract(drafterToken, id)).contains("NOTICE");
 
         // 已拒绝后，另一审批人即使有 PENDING 任务也不能再审批（状态闸门）
         opExpect(ap2Token, id, "approve", "{\"result\":\"APPROVED\",\"opinion\":\"同意\"}", 409);
@@ -236,7 +237,7 @@ class ContractWorkflowTraversalIntegrationTest {
 
         opOk(drafterToken, id, "resume", null);
         assertStatus(id, "DRAFT");
-        assertThat(myTaskTypesForContract(drafterToken, id)).doesNotContain("REVISE");
+        assertThat(myTaskTypesForContract(drafterToken, id)).contains("REVISE");
         assertThat(myTaskTypesForContract(cs1Token, id)).doesNotContain("COUNTERSIGN");
         assertThat(myTaskTypesForContract(cs2Token, id)).doesNotContain("COUNTERSIGN");
 
@@ -276,6 +277,7 @@ class ContractWorkflowTraversalIntegrationTest {
         opOk(drafterToken, id, "recall", null);
         assertStatus(id, "DRAFT");
         assertThat(myTaskTypesForContract(assignerToken, id)).doesNotContain("ASSIGN");
+        assertThat(myTaskTypesForContract(drafterToken, id)).contains("REVISE");
         assertThat(myTaskTypesForContract(cs1Token, id)).doesNotContain("COUNTERSIGN");
 
         opOk(drafterToken, id, "resume", null);
@@ -327,6 +329,8 @@ class ContractWorkflowTraversalIntegrationTest {
 
         opOk(cs1Token, countersignReturnId, "tasks/withdraw", null);
         assertStatus(countersignReturnId, "ASSIGNED");
+        JsonNode withdrawnReturnDetail = getJson("/api/v1/contracts/" + countersignReturnId, adminToken).get("data");
+        assertThat(withdrawnReturnDetail.get("contract").get("returnTargetStage").isNull()).isTrue();
         assertThat(myTaskTypesForContract(drafterToken, countersignReturnId)).doesNotContain("REVISE");
         assertThat(myTaskTypesForContract(cs1Token, countersignReturnId)).contains("COUNTERSIGN");
 
@@ -335,10 +339,14 @@ class ContractWorkflowTraversalIntegrationTest {
         opOk(ap1Token, approvalRejectId, "approve", "{\"result\":\"REJECTED\",\"opinion\":\"拒绝后撤回\"}");
         assertStatus(approvalRejectId, "REJECTED");
         assertThat(myTaskTypesForContract(drafterToken, approvalRejectId)).doesNotContain("REVISE");
+        assertThat(myTaskTypesForContract(drafterToken, approvalRejectId)).contains("NOTICE");
 
         opOk(ap1Token, approvalRejectId, "tasks/withdraw", null);
         assertStatus(approvalRejectId, "FINALIZED");
+        JsonNode withdrawnRejectDetail = getJson("/api/v1/contracts/" + approvalRejectId, adminToken).get("data");
+        assertThat(withdrawnRejectDetail.get("contract").get("returnTargetStage").isNull()).isTrue();
         assertThat(myTaskTypesForContract(drafterToken, approvalRejectId)).doesNotContain("REVISE");
+        assertThat(myTaskTypesForContract(drafterToken, approvalRejectId)).doesNotContain("NOTICE");
         assertThat(myTaskTypesForContract(ap1Token, approvalRejectId)).contains("APPROVAL");
     }
 

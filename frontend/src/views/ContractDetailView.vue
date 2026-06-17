@@ -287,7 +287,7 @@ async function doResume() {
 }
 
 async function doRecall() {
-  askConfirm('撤回合同', '确认撤回合同并回到待分配？', async () => {
+  askConfirm('撤回合同', '确认撤回合同并回到重新起草？已分配的会签、审批和签订人员会保留，恢复后直接进入会签。', async () => {
   try {
     await api.post(`/contracts/${route.params.id}/recall`)
     success.value = '合同已撤回'
@@ -402,6 +402,7 @@ const canFinalizeCurrent = computed(() => hasPermission('contract:update') && co
 const canApproveCurrent = computed(() => hasPermission('contract:approve') && contract.value?.status === 'FINALIZED' && pendingTask('APPROVAL'))
 const canSignCurrent = computed(() => hasPermission('contract:sign') && contract.value?.status === 'APPROVED' && pendingTask('SIGN'))
 const canCancelCurrent = computed(() => hasPermission('contract:delete') && !['SIGNED', 'CANCELLED'].includes(contract.value?.status))
+const isDraftResumePending = computed(() => contract.value?.status === 'DRAFT' && contract.value?.returnTargetStage === 'DRAFT')
 const canModifyAttachments = computed(() =>
   hasPermission('contract:update') &&
   Number(contract.value?.drafterId) === Number(auth.user?.id) &&
@@ -419,6 +420,23 @@ const canResumeCurrent = computed(() =>
 const canRecallCurrent = computed(() => hasPermission('contract:update') && contract.value?.status === 'ASSIGNED' && Number(contract.value?.drafterId) === Number(auth.user?.id))
 const currentRoundTasks = computed(() => tasks.value.filter(t => Number(t.round || 1) === Number(contract.value?.currentRound || 1)))
 const canWithdrawCurrent = computed(() => currentRoundTasks.value.some(isWithdrawableTask))
+const preservedAssignees = computed(() => {
+  const labels = { COUNTERSIGN: '会签', APPROVAL: '审批', SIGN: '签订' }
+  return ['COUNTERSIGN', 'APPROVAL', 'SIGN'].map(type => ({
+    type,
+    label: labels[type],
+    names: currentRoundTasks.value
+      .filter(t => t.taskType === type && t.taskStatus === 'SUPERSEDED')
+      .map(t => t.assigneeName)
+  })).filter(group => group.names.length)
+})
+const resumeHint = computed(() => {
+  if (isDraftResumePending.value) return '已保留原分配人员，修改完成后可恢复会签，无需重新分配。'
+  if (contract.value?.status === 'RETURNED') return `合同被打回至${returnTargetLabel(contract.value?.returnTargetStage)}，起草人处理后可恢复流程。`
+  if (contract.value?.status === 'REJECTED') return '合同已被审批拒绝，流程终止。起草人可查看拒绝原因，但不能修改或重新提交。'
+  return ''
+})
+const resumeButtonLabel = computed(() => isDraftResumePending.value ? '恢复会签' : '恢复流程')
 const taskRounds = computed(() => {
   const groups = new Map()
   visibleTasks.value.forEach(task => {
@@ -432,7 +450,7 @@ const taskRounds = computed(() => {
       round,
       current: round === (contract.value?.currentRound || 1),
       tasks: roundTasks.sort((a, b) => {
-      const order = { ASSIGN: 1, COUNTERSIGN: 2, REVISE: 3, FINALIZE: 4, APPROVAL: 5, SIGN: 6 }
+      const order = { ASSIGN: 1, COUNTERSIGN: 2, REVISE: 3, FINALIZE: 4, APPROVAL: 5, SIGN: 6, NOTICE: 7 }
         return (order[a.taskType] || 99) - (order[b.taskType] || 99)
       })
     }))
@@ -564,9 +582,11 @@ onMounted(() => {
       <div class="section-title">
         <h2>{{ contract.name }}</h2>
         <StatusBadge :value="contract.status" />
+        <span v-if="isDraftResumePending" class="status status-resume">待恢复会签</span>
       </div>
 
       <PipelineStepper :contract="contract" :tasks="tasks" />
+      <p v-if="resumeHint" class="workflow-hint">{{ resumeHint }}</p>
 
       <div class="tabs">
         <button :class="{ selected: activeTab === 'info' }" @click="activeTab = 'info'">基础信息</button>
@@ -593,7 +613,16 @@ onMounted(() => {
           <div><dt>结束日期</dt><dd>{{ contract.endDate }}</dd></div>
           <div v-if="contract.signedDate"><dt>签订日期</dt><dd>{{ contract.signedDate }}</dd></div>
           <div v-if="contract.signInfo"><dt>签订信息</dt><dd>{{ contract.signInfo }}</dd></div>
+          <div v-if="isDraftResumePending"><dt>流程提示</dt><dd>保留分配，待恢复会签</dd></div>
         </dl>
+        <div v-if="preservedAssignees.length" class="preserved-roster">
+          <h4>已保留分配人员</h4>
+          <div class="task-tags">
+            <span v-for="group in preservedAssignees" :key="'info-preserved-' + group.type" class="status status-resume">
+              {{ group.label }}：{{ group.names.join('、') }}
+            </span>
+          </div>
+        </div>
         <div style="margin-top:16px">
           <h4>合同概述</h4>
           <pre class="content-box">{{ contract.content }}</pre>
@@ -609,11 +638,11 @@ onMounted(() => {
           <button v-if="canCountersignCurrent" @click="openAction('COUNTERSIGN')">会签</button>
           <button v-if="canSignCurrent" @click="openAction('SIGN')">签订</button>
           <button v-if="canResumeCurrent" @click="doResume">
-            <RotateCcw :size="14" /> 恢复流程
+            <RotateCcw :size="14" /> {{ resumeButtonLabel }}
           </button>
           <button v-if="canRecallCurrent" @click="doRecall">撤回合同</button>
           <button v-if="canWithdrawCurrent" @click="doWithdrawTask">撤回任务</button>
-          <button v-if="canCancelCurrent" @click="doCancel" style="color:#b42318">
+          <button v-if="canCancelCurrent" class="danger-ghost" @click="doCancel">
             <XCircle :size="14" /> 取消合同
           </button>
         </div>
@@ -712,9 +741,9 @@ onMounted(() => {
           <button v-if="actionForm.type === 'COUNTERSIGN'" class="primary" @click="doCountersign">提交会签</button>
           <button v-if="actionForm.type === 'FINALIZE'" class="primary" @click="doFinalize">提交定稿</button>
           <button v-if="actionForm.type === 'APPROVAL'" class="primary" @click="doApprove('APPROVED')">审批通过</button>
-          <button v-if="actionForm.type === 'APPROVAL'" @click="doApprove('REJECTED')">审批拒绝</button>
+          <button v-if="actionForm.type === 'APPROVAL'" class="danger" @click="doApprove('REJECTED')">审批拒绝</button>
           <button v-if="actionForm.type === 'SIGN'" class="primary" @click="doSign">提交签订</button>
-          <button v-if="canReturnCurrent" style="color:#b42318" @click="doReturn()">打回</button>
+          <button v-if="canReturnCurrent" class="danger-ghost" @click="doReturn()">打回</button>
           <button class="secondary" type="button" @click="activeTab = 'info'">取消</button>
         </div>
       </div>
@@ -772,6 +801,15 @@ onMounted(() => {
           <div><dt>当前轮次</dt><dd>第 {{ contract.currentRound || 1 }} 轮</dd></div>
           <div><dt>回退目标</dt><dd>{{ returnTargetLabel(contract.returnTargetStage) }}</dd></div>
           <div><dt>当前状态</dt><dd><StatusBadge :value="contract.status" /></dd></div>
+          <div v-if="isDraftResumePending"><dt>恢复策略</dt><dd>保留分配，跳过重新分配</dd></div>
+        </div>
+        <div v-if="preservedAssignees.length" class="preserved-roster" style="margin-bottom:16px">
+          <h4>当前轮保留分配</h4>
+          <div class="task-tags">
+            <span v-for="group in preservedAssignees" :key="'rollback-preserved-' + group.type" class="status status-resume">
+              {{ group.label }}：{{ group.names.join('、') }}
+            </span>
+          </div>
         </div>
 
         <div v-if="taskRounds.length === 0" class="muted" style="text-align:center;padding:24px">暂无轮次任务</div>

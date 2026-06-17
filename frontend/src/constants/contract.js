@@ -19,8 +19,8 @@ export const workflowSteps = [
   { type: 'SIGN', label: '签订', status: 'APPROVED' }
 ]
 
-export const taskOrder = { ASSIGN: 1, COUNTERSIGN: 2, REVISE: 3, FINALIZE: 4, APPROVAL: 5, SIGN: 6 }
-export const taskLabels = { ASSIGN: '分配', COUNTERSIGN: '会签', REVISE: '起草处理', FINALIZE: '定稿', APPROVAL: '审批', SIGN: '签订' }
+export const taskOrder = { ASSIGN: 1, COUNTERSIGN: 2, REVISE: 3, FINALIZE: 4, APPROVAL: 5, SIGN: 6, NOTICE: 7 }
+export const taskLabels = { ASSIGN: '分配', COUNTERSIGN: '会签', REVISE: '起草处理', FINALIZE: '定稿', APPROVAL: '审批', SIGN: '签订', NOTICE: '拒绝通知' }
 
 export function contractStatusLabel(status) {
   return contractStatuses.find(item => item.value === status)?.label || status || '-'
@@ -36,6 +36,7 @@ export function taskStatusLabel(status) {
 }
 
 export function activeStepIndex(status, returnTargetStage = '') {
+  if (status === 'DRAFT' && returnTargetStage === 'DRAFT') return 1
   if (status === 'DRAFT') return 0
   if (status === 'ASSIGNED') return 1
   if (status === 'COUNTERSIGNED') return 2

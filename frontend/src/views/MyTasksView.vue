@@ -14,6 +14,7 @@ const taskStatusContractMap = {
   ASSIGN: 'DRAFT',
   COUNTERSIGN: 'ASSIGNED',
   REVISE: 'RETURNED',
+  NOTICE: 'REJECTED',
   FINALIZE: 'COUNTERSIGNED',
   APPROVAL: 'FINALIZED',
   SIGN: 'APPROVED'
@@ -41,8 +42,9 @@ const groupedTasks = computed(() => {
     group.contract = {
       id: group.contractId,
       name: group.contractName,
-      status: taskStatusContractMap[group.current?.taskType] || 'DRAFT',
-      currentRound: group.current?.round || 1
+      status: group.current?.contractStatus || taskStatusContractMap[group.current?.taskType] || 'DRAFT',
+      returnTargetStage: group.current?.contractReturnTargetStage || '',
+      currentRound: group.current?.contractCurrentRound || group.current?.round || 1
     }
     return group
   })
@@ -68,6 +70,7 @@ function openAction(task) {
     ASSIGN: 'assign',
     COUNTERSIGN: 'countersign',
     REVISE: 'edit',
+    NOTICE: 'info',
     FINALIZE: 'finalize',
     APPROVAL: 'approve',
     SIGN: 'sign'
@@ -114,6 +117,9 @@ onMounted(loadTasks)
           </button>
           <button v-if="group.current.taskType === 'REVISE'" @click="openAction(group.current)">
             <FileEdit :size="14" /> 处理
+          </button>
+          <button v-if="group.current.taskType === 'NOTICE'" @click="openContract(group.current)">
+            <FileEdit :size="14" /> 查看
           </button>
           <button v-if="group.current.taskType === 'FINALIZE'" @click="openAction(group.current)">
             <FileEdit :size="14" /> 定稿

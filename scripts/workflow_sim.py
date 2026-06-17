@@ -172,6 +172,7 @@ def successors(state):
                     else:
                         nt2.append(t)
                 nt2 = supersede_pending_type(nt2, "APPROVAL", rnd)
+                _add_pending(nt2, "NOTICE", DRAFTER, rnd, "reject->NOTICE")
                 yield (f"reject({a})", mk("REJECTED", rnd, None, nt2))
 
     # sign (APPROVED)
@@ -204,7 +205,7 @@ def successors(state):
 
     # resume (DRAFT after recall/return-to-draft)
     if status == "DRAFT" and rt == "DRAFT":
-        nt = list(tasks)
+        nt = [("REVISE", "DONE", t[2], t[3]) if t == ("REVISE", "PENDING", DRAFTER, rnd) else t for t in tasks]
         for c in assignees_of_type_round(tasks, "COUNTERSIGN", rnd):
             _add_pending(nt, "COUNTERSIGN", c, rnd, "resume(DRAFT-preserved)")
         yield ("resume(DRAFT-preserved)", mk("ASSIGNED", rnd, None, nt))
@@ -220,6 +221,7 @@ def successors(state):
                 nt.append(("APPROVAL", "SUPERSEDED", a, nr))
             for s in assignees_of_type_round(tasks, "SIGN", rnd):
                 nt.append(("SIGN", "SUPERSEDED", s, nr))
+            nt.append(("REVISE", "PENDING", DRAFTER, nr))
             yield ("resume(DRAFT)", mk("DRAFT", nr, "DRAFT", nt))
         elif rt == "FINALIZE":
             nt = [("REVISE", "DONE", t[2], t[3]) if t == ("REVISE", "PENDING", DRAFTER, rnd) else t for t in tasks]
@@ -242,6 +244,7 @@ def successors(state):
             nt.append(("APPROVAL", "SUPERSEDED", a, nr))
         for s in assignees_of_type_round(tasks, "SIGN", rnd):
             nt.append(("SIGN", "SUPERSEDED", s, nr))
+        nt.append(("REVISE", "PENDING", DRAFTER, nr))
         yield ("recall", mk("DRAFT", nr, "DRAFT", nt))
 
     # withdrawTask
@@ -277,6 +280,7 @@ def successors(state):
             nt = supersede_pending_type(nt, "APPROVAL", rnd); ns = "COUNTERSIGNED"
         elif ttype == "APPROVAL":
             nt = supersede_pending_type(nt, "REVISE", rnd)
+            nt = supersede_pending_type(nt, "NOTICE", rnd)
             nt = supersede_pending_type(nt, "SIGN", rnd); ns = "FINALIZED"
         else:
             continue
@@ -350,8 +354,8 @@ def main():
     deadlocks = {}
     for s in seen:
         status, rnd, rt, tasks = s
-        if status in ACTIVE_STATUSES:
-            exp = STATUS_EXPECTED_TYPE[status]
+        exp = "REVISE" if status == "DRAFT" and rt == "DRAFT" else STATUS_EXPECTED_TYPE.get(status)
+        if exp:
             if not pending(tasks, exp, rnd):
                 deadlocks.setdefault(status, []).append(s)
     total_dl = sum(len(v) for v in deadlocks.values())
@@ -360,7 +364,8 @@ def main():
         # 找一个轮次最小的代表（证明不是 ROUND_CAP 假象）
         rep = min(lst, key=lambda s: (s[1], len(shortest_path(start, s, adj) or [99] * 99)))
         p = shortest_path(start, rep, adj)
-        print(f"   ▶ {status} 缺 {STATUS_EXPECTED_TYPE[status]} 任务: {len(lst)} 个; 最小轮次={rep[1]}"
+        expected = "REVISE" if status == "DRAFT" and rep[2] == "DRAFT" else STATUS_EXPECTED_TYPE[status]
+        print(f"   ▶ {status} 缺 {expected} 任务: {len(lst)} 个; 最小轮次={rep[1]}"
               f"{'（< 上限，非 CAP 假象）' if rep[1] < ROUND_CAP else ''}")
         print(f"     最短复现({len(p)}步): {' -> '.join(p)}")
         # 该状态还能做什么（是否能靠 recall 逃逸）

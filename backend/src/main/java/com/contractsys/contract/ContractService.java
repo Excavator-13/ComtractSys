@@ -165,6 +165,7 @@ public class ContractService {
             if (!"DRAFT".equals(target)) {
                 throw ApiException.conflict("当前草稿不支持直接恢复目标: " + target);
             }
+            finishOptionalTask(contract, operator, TaskType.REVISE, TaskStatus.DONE, "起草人恢复会签流程");
             createPendingTasksFromAssignees(contract, TaskType.COUNTERSIGN, "contract:countersign");
             contract.setReturnTargetStage(null);
             changeStatus(contract, ContractStatus.ASSIGNED, operator,
@@ -179,6 +180,7 @@ public class ContractService {
             cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.COUNTERSIGN, "contract:countersign", false);
             cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.APPROVAL, "contract:approve", false);
             cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.SIGN, "contract:sign", false);
+            createTask(contract, contract.getDrafter().getId(), TaskType.REVISE, "contract:update");
             changeStatus(contract, ContractStatus.DRAFT, operator,
                     "第 " + contract.getCurrentRound() + " 轮恢复至重新起草");
         } else if ("FINALIZE".equals(target)) {
@@ -213,6 +215,7 @@ public class ContractService {
         cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.COUNTERSIGN, "contract:countersign", false);
         cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.APPROVAL, "contract:approve", false);
         cloneAssigneeTasksForNewRound(contract, previousRound, TaskType.SIGN, "contract:sign", false);
+        createTask(contract, contract.getDrafter().getId(), TaskType.REVISE, "contract:update");
         changeStatus(contract, ContractStatus.DRAFT, operator, "起草人撤回合同");
         return queryService.detail(id, operator);
     }
@@ -246,7 +249,9 @@ public class ContractService {
         TaskStatus taskStatus = request.result() == ApproveResult.APPROVED ? TaskStatus.DONE : TaskStatus.REJECTED;
         finishTask(id, operator, TaskType.APPROVAL, taskStatus, request.opinion());
         if (taskStatus == TaskStatus.REJECTED) {
+            contract.setReturnTargetStage(null);
             supersedeCurrentRoundPendingTasksByType(contract, TaskType.APPROVAL, "审批已被其他人拒绝，当前轮审批待办已封存");
+            createTask(contract, contract.getDrafter().getId(), TaskType.NOTICE, null);
             changeStatus(contract, ContractStatus.REJECTED, operator, "审批拒绝");
         } else if (!taskRepository.existsByContractIdAndTaskTypeAndTaskStatusAndRound(id, TaskType.APPROVAL, TaskStatus.PENDING, contract.getCurrentRound())) {
             createPendingTasksFromAssignees(contract, TaskType.SIGN, "contract:sign");
@@ -524,15 +529,19 @@ public class ContractService {
             case COUNTERSIGN -> {
                 supersedeCurrentRoundPendingTasksByType(contract, TaskType.REVISE, "打回已撤回，起草处理待办已关闭");
                 supersedeCurrentRoundPendingTasksByType(contract, TaskType.FINALIZE, "会签撤回，定稿待办已封存");
+                contract.setReturnTargetStage(null);
                 changeStatus(contract, ContractStatus.ASSIGNED, operator, "撤回会签意见");
             }
             case FINALIZE -> {
                 supersedeCurrentRoundPendingTasksByType(contract, TaskType.APPROVAL, "定稿撤回，审批待办已封存");
+                contract.setReturnTargetStage(null);
                 changeStatus(contract, ContractStatus.COUNTERSIGNED, operator, "撤回定稿");
             }
             case APPROVAL -> {
                 supersedeCurrentRoundPendingTasksByType(contract, TaskType.REVISE, "审批拒绝或打回已撤回，起草处理待办已关闭");
+                supersedeCurrentRoundPendingTasksByType(contract, TaskType.NOTICE, "审批拒绝已撤回，通知待办已关闭");
                 supersedeCurrentRoundPendingTasksByType(contract, TaskType.SIGN, "审批撤回，签订待办已封存");
+                contract.setReturnTargetStage(null);
                 changeStatus(contract, ContractStatus.FINALIZED, operator, "撤回审批意见");
             }
             default -> throw ApiException.conflict("该任务类型不支持撤回");

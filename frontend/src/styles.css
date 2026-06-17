@@ -136,6 +136,16 @@ textarea {
   color: #26364d;
 }
 
+.danger {
+  background: #b42318 !important;
+  color: #fff !important;
+}
+
+.danger-ghost {
+  background: #fff1f0 !important;
+  color: #b42318 !important;
+}
+
 .error {
   margin: 0;
   color: #b42318;
@@ -616,6 +626,23 @@ th {
   min-height: 200px;
 }
 
+.workflow-hint {
+  margin: -8px 0 14px;
+  padding: 10px 12px;
+  border-left: 3px solid #d97706;
+  background: #fff7ed;
+  color: #7c2d12;
+  font-size: 14px;
+}
+
+.preserved-roster {
+  margin-top: 16px;
+}
+
+.preserved-roster h4 {
+  margin-bottom: 8px;
+}
+
 /* detail grid */
 .detail-grid {
   display: grid;
@@ -974,6 +1001,7 @@ th {
 .status-REJECTED { background: #ffebee; color: #c62828; }
 .status-RETURNED,
 .status-returned { background: #fff3e0; color: #b45309; }
+.status-resume { background: #fff7ed; color: #9a4b00; }
 .status-CANCELLED { background: #f1f5f9; color: #475569; }
 .status-draft { background: #e8f4f8; color: #2b6e8a; }
 .status-assigned { background: #fff3e0; color: #b85c00; }
