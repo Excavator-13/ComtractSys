@@ -697,6 +697,68 @@ class ContractWorkflowTraversalIntegrationTest {
                 .andExpect(status().isConflict());
     }
 
+    @Test
+    void chunkedAttachmentUploadCanResumeAndComplete() throws Exception {
+        long id = createContract("分片上传合同" + suffix);
+        byte[] bytes = "%PDF-1.4\nchunked attachment body\n%%EOF".getBytes();
+        MvcResult sessionResult = mockMvc.perform(post("/api/v1/contracts/" + id + "/attachments/chunk-session")
+                        .header("Authorization", "Bearer " + drafterToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"originalName":"chunked.pdf","fileSize":%d,
+                                 "contentType":"application/pdf","chunkSize":12,"totalChunks":4}
+                                """.formatted(bytes.length)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.uploadedChunks.length()").value(0))
+                .andReturn();
+        String uploadId = objectMapper.readTree(sessionResult.getResponse().getContentAsString())
+                .path("data").path("uploadId").asText();
+
+        MockMultipartFile chunk1 = new MockMultipartFile(
+                "chunk", "chunked.pdf.part1", MediaType.APPLICATION_OCTET_STREAM_VALUE,
+                java.util.Arrays.copyOfRange(bytes, 12, 24));
+        mockMvc.perform(multipart("/api/v1/attachments/chunk-session/" + uploadId + "/chunks/1")
+                        .file(chunk1)
+                        .with(request -> { request.setMethod("PUT"); return request; })
+                        .header("Authorization", "Bearer " + drafterToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.uploadedChunks[0]").value(1));
+
+        mockMvc.perform(get("/api/v1/attachments/chunk-session/" + uploadId)
+                        .header("Authorization", "Bearer " + drafterToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.uploadedChunks[0]").value(1));
+
+        for (int index : List.of(0, 2, 3)) {
+            int start = index * 12;
+            int end = Math.min(start + 12, bytes.length);
+            MockMultipartFile chunk = new MockMultipartFile(
+                    "chunk", "chunked.pdf.part" + index, MediaType.APPLICATION_OCTET_STREAM_VALUE,
+                    java.util.Arrays.copyOfRange(bytes, start, end));
+            mockMvc.perform(multipart("/api/v1/attachments/chunk-session/" + uploadId + "/chunks/" + index)
+                            .file(chunk)
+                            .with(request -> { request.setMethod("PUT"); return request; })
+                            .header("Authorization", "Bearer " + drafterToken))
+                    .andExpect(status().isOk());
+        }
+
+        MvcResult completed = mockMvc.perform(post("/api/v1/attachments/chunk-session/" + uploadId + "/complete")
+                        .header("Authorization", "Bearer " + drafterToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.originalName").value("chunked.pdf"))
+                .andExpect(jsonPath("$.data.fileSize").value(bytes.length))
+                .andReturn();
+        long attachmentId = objectMapper.readTree(completed.getResponse().getContentAsString())
+                .path("data").path("id").asLong();
+
+        mockMvc.perform(get("/api/v1/attachments/" + attachmentId + "/download")
+                        .header("Authorization", "Bearer " + drafterToken))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/attachments/chunk-session/" + uploadId)
+                        .header("Authorization", "Bearer " + drafterToken))
+                .andExpect(status().isNotFound());
+    }
+
     // ===================== 辅助方法 =====================
 
     private String login(String username, String password) throws Exception {

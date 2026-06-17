@@ -295,6 +295,38 @@ public class ContractController {
         return ApiResponse.ok("上传成功", attachmentService.upload(id, file, user));
     }
 
+    @PostMapping("/contracts/{id}/attachments/chunk-session")
+    @RequirePermission("contract:update")
+    public ApiResponse<ChunkUploadSessionView> createAttachmentChunkSession(
+            @PathVariable Long id,
+            @RequestBody ChunkUploadCreateRequest request,
+            @CurrentUser SysUser user) {
+        return ApiResponse.ok(attachmentService.createChunkSession(id, request, user));
+    }
+
+    @GetMapping("/attachments/chunk-session/{uploadId}")
+    @RequirePermission("contract:update")
+    public ApiResponse<ChunkUploadSessionView> attachmentChunkSession(@PathVariable String uploadId,
+                                                                      @CurrentUser SysUser user) {
+        return ApiResponse.ok(attachmentService.chunkSession(uploadId, user));
+    }
+
+    @PutMapping(value = "/attachments/chunk-session/{uploadId}/chunks/{index}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @RequirePermission("contract:update")
+    public ApiResponse<ChunkUploadSessionView> uploadAttachmentChunk(@PathVariable String uploadId,
+                                                                     @PathVariable int index,
+                                                                     @RequestParam("chunk") MultipartFile chunk,
+                                                                     @CurrentUser SysUser user) {
+        return ApiResponse.ok(attachmentService.uploadChunk(uploadId, index, chunk, user));
+    }
+
+    @PostMapping("/attachments/chunk-session/{uploadId}/complete")
+    @RequirePermission("contract:update")
+    public ApiResponse<AttachmentView> completeAttachmentChunkSession(@PathVariable String uploadId,
+                                                                      @CurrentUser SysUser user) {
+        return ApiResponse.ok("上传成功", attachmentService.completeChunkSession(uploadId, user));
+    }
+
     @GetMapping("/contracts/{id}/attachments")
     @RequirePermission({"contract:view", "contract:query"})
     public ApiResponse<List<AttachmentView>> listAttachments(@PathVariable Long id, @CurrentUser SysUser user) {

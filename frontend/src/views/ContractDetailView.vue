@@ -26,8 +26,10 @@ const success = ref('')
 const activeTab = ref('info')
 const requestedTab = ref('')
 const uploading = ref(false)
+const uploadProgress = ref(0)
 const savingEdit = ref(false)
 const hasPermission = (permission) => auth.permissions.includes(permission)
+const ATTACHMENT_CHUNK_SIZE = 1024 * 1024
 
 const editForm = reactive({
   name: '',
@@ -350,20 +352,68 @@ async function handleUpload(e) {
   const file = e.target.files[0]
   if (!file) return
   uploading.value = true
+  uploadProgress.value = 0
   error.value = ''
   try {
-    const formData = new FormData()
-    formData.append('file', file)
-    await api.post(`/contracts/${route.params.id}/attachments`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
+    await uploadAttachmentInChunks(file)
     success.value = '文件上传成功'
     await loadAttachments()
   } catch (err) {
     error.value = err.message
   } finally {
     uploading.value = false
+    uploadProgress.value = 0
+    e.target.value = ''
   }
+}
+
+function uploadStorageKey(file) {
+  return `attachment-upload:${route.params.id}:${file.name}:${file.size}:${file.lastModified}`
+}
+
+async function getReusableUploadSession(file) {
+  const key = uploadStorageKey(file)
+  const existingId = localStorage.getItem(key)
+  if (existingId) {
+    try {
+      const status = await api.get(`/attachments/chunk-session/${existingId}`)
+      if (status.data.originalName === file.name && Number(status.data.fileSize) === Number(file.size)) {
+        return status.data
+      }
+    } catch {
+      localStorage.removeItem(key)
+    }
+  }
+  const totalChunks = Math.ceil(file.size / ATTACHMENT_CHUNK_SIZE)
+  const created = await api.post(`/contracts/${route.params.id}/attachments/chunk-session`, {
+    originalName: file.name,
+    fileSize: file.size,
+    contentType: file.type || 'application/octet-stream',
+    chunkSize: ATTACHMENT_CHUNK_SIZE,
+    totalChunks
+  })
+  localStorage.setItem(key, created.data.uploadId)
+  return created.data
+}
+
+async function uploadAttachmentInChunks(file) {
+  const session = await getReusableUploadSession(file)
+  const uploaded = new Set(session.uploadedChunks || [])
+  const totalChunks = session.totalChunks || Math.ceil(file.size / ATTACHMENT_CHUNK_SIZE)
+  for (let index = 0; index < totalChunks; index++) {
+    if (!uploaded.has(index)) {
+      const start = index * session.chunkSize
+      const end = Math.min(start + session.chunkSize, file.size)
+      const formData = new FormData()
+      formData.append('chunk', file.slice(start, end), `${file.name}.part${index}`)
+      await api.put(`/attachments/chunk-session/${session.uploadId}/chunks/${index}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+    }
+    uploadProgress.value = Math.round(((index + 1) / totalChunks) * 100)
+  }
+  await api.post(`/attachments/chunk-session/${session.uploadId}/complete`)
+  localStorage.removeItem(uploadStorageKey(file))
 }
 
 async function downloadAttachment(a) {
@@ -839,7 +889,7 @@ onMounted(() => {
         <div style="margin-bottom:14px">
           <label v-if="canModifyAttachments" class="secondary" style="display:inline-flex;cursor:pointer;min-height:38px;align-items:center;gap:8px;padding:0 14px;border-radius:6px;font-weight:700">
             <Upload :size="16" />
-            {{ uploading ? '上传中...' : '选择文件' }}
+            {{ uploading ? `上传中 ${uploadProgress}%` : '选择文件' }}
             <input type="file" hidden accept=".doc,.docx,.jpg,.jpeg,.png,.bmp,.gif,.pdf" @change="handleUpload" :disabled="uploading" />
           </label>
           <span class="muted" style="margin-left:10px;font-size:13px">支持 doc/docx/jpg/png/pdf，最大 10MB</span>
