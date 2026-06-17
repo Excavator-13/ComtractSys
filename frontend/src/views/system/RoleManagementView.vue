@@ -164,7 +164,6 @@ onMounted(() => { loadRoles(); loadPermissions() })
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400">
               <input type="checkbox" :checked="selectedPermIds.includes(p.id)" @change="togglePerm(p.id)" />
               <strong>{{ p.permissionName }}</strong>
-              <span class="muted">{{ p.permissionCode }}</span>
             </label>
           </div>
         </div>
@@ -177,10 +176,9 @@ onMounted(() => { loadRoles(); loadPermissions() })
 
     <div class="panel">
       <table>
-        <thead><tr><th>角色编码</th><th>名称</th><th>描述</th><th>权限</th><th>操作</th></tr></thead>
+        <thead><tr><th>名称</th><th>描述</th><th>权限</th><th>操作</th></tr></thead>
         <tbody>
           <tr v-for="r in roles" :key="r.id">
-            <td>{{ r.roleCode }}</td>
             <td>{{ r.roleName }}</td>
             <td>{{ r.description }}</td>
             <td class="chip-cell">
@@ -194,7 +192,7 @@ onMounted(() => { loadRoles(); loadPermissions() })
               <button @click="remove(r.id)"><Trash2 :size="14" /> 删除</button>
             </td>
           </tr>
-          <tr v-if="roles.length === 0"><td colspan="5" class="muted" style="text-align:center">暂无角色</td></tr>
+          <tr v-if="roles.length === 0"><td colspan="4" class="muted" style="text-align:center">暂无角色</td></tr>
         </tbody>
       </table>
     </div>

@@ -147,7 +147,7 @@ onMounted(() => { loadUsers(); loadRoles() })
       <div class="actions">
         <div class="input" style="max-width:200px">
           <Search :size="16" />
-          <input v-model="keyword" placeholder="搜索用户名" @keyup.enter="search" />
+          <input v-model="keyword" placeholder="搜索用户" @keyup.enter="search" />
         </div>
         <button class="secondary" @click="loadUsers"><RefreshCcw :size="16" /></button>
         <button class="primary" @click="openCreate"><Plus :size="16" /> 新增用户</button>
@@ -177,7 +177,7 @@ onMounted(() => { loadUsers(); loadRoles() })
         <label v-for="r in roles" :key="r.id" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400">
           <input v-model="selectedRoleId" type="radio" name="role" :value="r.id" style="width:auto;min-height:auto" />
           <strong>{{ r.roleName }}</strong>
-          <span class="muted">{{ r.roleCode }} - {{ r.description }}</span>
+          <span class="muted">{{ r.description }}</span>
         </label>
       </div>
       <div class="row-actions" style="margin-top:14px">
@@ -188,11 +188,10 @@ onMounted(() => { loadUsers(); loadRoles() })
 
     <div class="panel">
       <table>
-        <thead><tr><th>用户名</th><th>显示名称</th><th>角色</th><th>状态</th><th>操作</th></tr></thead>
+        <thead><tr><th>显示名称</th><th>角色</th><th>状态</th><th>操作</th></tr></thead>
         <tbody>
           <tr v-for="u in users" :key="u.id">
-            <td>{{ u.username }}</td>
-            <td>{{ u.displayName }}</td>
+            <td>{{ u.displayName || '-' }}</td>
             <td><span v-for="r in u.roles" :key="r" class="status" style="margin-right:4px">{{ roleName(r) }}</span></td>
             <td>
               <span :class="u.status === 'ENABLED' ? 'status status-APPROVED' : 'status status-REJECTED'">
@@ -210,7 +209,7 @@ onMounted(() => { loadUsers(); loadRoles() })
               </button>
             </td>
           </tr>
-          <tr v-if="users.length === 0"><td colspan="5" class="muted" style="text-align:center">暂无用户</td></tr>
+          <tr v-if="users.length === 0"><td colspan="4" class="muted" style="text-align:center">暂无用户</td></tr>
         </tbody>
       </table>
     </div>

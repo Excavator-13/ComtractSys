@@ -69,7 +69,7 @@ onMounted(loadPermissions)
       <div class="actions">
         <div class="input" style="max-width:240px">
           <Search :size="16" />
-          <input v-model="keyword" placeholder="搜索权限编码/名称/模块" />
+          <input v-model="keyword" placeholder="搜索权限名称/模块" />
         </div>
         <button class="secondary" @click="loadPermissions"><RefreshCcw :size="16" /></button>
       </div>
@@ -94,10 +94,9 @@ onMounted(loadPermissions)
 
     <div class="panel">
       <table>
-        <thead><tr><th>权限编码</th><th>名称</th><th>模块</th><th>类型</th><th>描述</th><th>操作</th></tr></thead>
+        <thead><tr><th>名称</th><th>模块</th><th>类型</th><th>描述</th><th>操作</th></tr></thead>
         <tbody>
           <tr v-for="p in filteredPermissions" :key="p.id">
-            <td><code>{{ p.permissionCode }}</code></td>
             <td>{{ p.permissionName }}</td>
             <td><span class="status">{{ p.module }}</span></td>
             <td><span class="status">{{ p.core ? '系统权限' : '扩展权限' }}</span></td>
@@ -107,7 +106,7 @@ onMounted(loadPermissions)
             </td>
           </tr>
           <tr v-if="filteredPermissions.length === 0">
-            <td colspan="6" class="muted" style="text-align:center">暂无权限</td>
+            <td colspan="5" class="muted" style="text-align:center">暂无权限</td>
           </tr>
         </tbody>
       </table>
