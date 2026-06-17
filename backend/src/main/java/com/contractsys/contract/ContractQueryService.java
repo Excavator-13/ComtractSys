@@ -11,8 +11,10 @@ import com.contractsys.user.SysUser;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -102,9 +104,11 @@ public class ContractQueryService {
         ).map(ContractView::from);
     }
 
+    @Transactional
     public ContractDetailView detail(Long id, SysUser user) {
         Contract contract = accessGuard.getContract(id);
         accessGuard.ensureCanViewContract(contract, user);
+        acknowledgeRejectedNotice(contract, user);
         List<TaskView> tasks = taskRepository.findByContractIdOrderByCreatedAtAsc(id).stream().map(TaskView::from).toList();
         return new ContractDetailView(ContractView.from(contract), tasks);
     }
@@ -135,6 +139,19 @@ public class ContractQueryService {
         return stateHistoryRepository.findByContractIdOrderByCreatedAtAsc(id).stream()
                 .map(ContractTimelineView::from)
                 .toList();
+    }
+
+    private void acknowledgeRejectedNotice(Contract contract, SysUser user) {
+        if (contract.getStatus() != ContractStatus.REJECTED || !contract.getDrafter().getId().equals(user.getId())) {
+            return;
+        }
+        taskRepository.findByContractIdAndAssigneeAndTaskTypeAndTaskStatusAndRound(
+                        contract.getId(), user, TaskType.NOTICE, TaskStatus.PENDING, contract.getCurrentRound())
+                .ifPresent(task -> {
+                    task.setTaskStatus(TaskStatus.DONE);
+                    task.setOpinion("起草人已查看审批拒绝通知");
+                    task.setOperatedAt(LocalDateTime.now());
+                });
     }
 
     private ContractStatus parseStatus(String statusStr) {

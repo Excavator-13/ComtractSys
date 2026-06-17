@@ -210,6 +210,8 @@ class ContractWorkflowTraversalIntegrationTest {
         assertStatus(id, "REJECTED");
         assertThat(myTaskTypesForContract(drafterToken, id)).doesNotContain("REVISE");
         assertThat(myTaskTypesForContract(drafterToken, id)).contains("NOTICE");
+        getJson("/api/v1/contracts/" + id, drafterToken);
+        assertThat(myTaskTypesForContract(drafterToken, id)).doesNotContain("NOTICE");
 
         // 已拒绝后，另一审批人即使有 PENDING 任务也不能再审批（状态闸门）
         opExpect(ap2Token, id, "approve", "{\"result\":\"APPROVED\",\"opinion\":\"同意\"}", 409);
