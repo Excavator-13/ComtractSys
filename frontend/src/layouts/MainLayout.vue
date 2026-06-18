@@ -53,6 +53,8 @@ const profileForm = reactive({ displayName: '', phone: '', email: '', password: 
 const canLoadTasks = computed(() =>
   auth.permissions.some(p => ['contract:assign', 'contract:countersign', 'contract:approve', 'contract:sign', 'contract:update'].includes(p))
 )
+const BADGE_POLL_INTERVAL = 10000
+let badgeTimer = null
 
 watch(() => route.path, (path) => {
   if (path.startsWith('/system')) sysMenuOpen.value = true
@@ -118,12 +120,27 @@ async function loadPendingTaskCount() {
   } catch {}
 }
 
+function startBadgePolling() {
+  stopBadgePolling()
+  loadPendingTaskCount()
+  badgeTimer = window.setInterval(loadPendingTaskCount, BADGE_POLL_INTERVAL)
+}
+
+function stopBadgePolling() {
+  if (!badgeTimer) return
+  window.clearInterval(badgeTimer)
+  badgeTimer = null
+}
+
 watch(() => route.fullPath, loadPendingTaskCount)
 onMounted(() => {
-  loadPendingTaskCount()
+  startBadgePolling()
   window.addEventListener('tasks-updated', loadPendingTaskCount)
 })
-onBeforeUnmount(() => window.removeEventListener('tasks-updated', loadPendingTaskCount))
+onBeforeUnmount(() => {
+  stopBadgePolling()
+  window.removeEventListener('tasks-updated', loadPendingTaskCount)
+})
 </script>
 
 <template>

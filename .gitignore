@@ -16,3 +16,15 @@ output/demo-run/
 output/playwright/*
 !output/playwright/
 !output/playwright/contractsys-smoke.mjs
+.DS_Store
+~$*.docx
+output/final-defense/docx-render*/
+output/final-defense/lo-*/
+output/final-defense/manual-pdf/
+output/final-defense/manual-screenshots*/
+output/final-defense/pdf/
+output/final-defense/ppt-layout/
+output/final-defense/ppt-preview/
+output/final-defense/recording-raw/
+output/final-defense/*.inspect.ndjson
+output/final-defense/video-frame-check.png

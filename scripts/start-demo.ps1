@@ -7,7 +7,8 @@ param(
     [ValidateSet("None", "Basic", "Rich")]
     [string]$SeedData = "Rich",
     [switch]$SeedExtraData,
-    [switch]$KillExistingOnPorts
+    [switch]$NoStopExisting,
+    [switch]$NoKillExistingOnPorts
 )
 
 $ErrorActionPreference = "Stop"
@@ -47,26 +48,31 @@ function Test-PortOpen {
 
 function Stop-PortProcess {
     param([int]$Port, [string]$Name)
-    $connection = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $connection) {
+    $connections = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
+    if ($connections.Count -eq 0) {
         return
     }
-    $processId = [int]$connection.OwningProcess
-    Write-Step "stopping process $processId that is using $Name port $Port"
-    Stop-Process -Id $processId -Force
+    $processIds = $connections |
+        Select-Object -ExpandProperty OwningProcess -Unique |
+        Where-Object { $_ -and $_ -gt 0 }
+
+    foreach ($processId in $processIds) {
+        Write-Step "stopping process $processId that is using $Name port $Port"
+        Stop-Process -Id ([int]$processId) -Force -ErrorAction SilentlyContinue
+    }
     Start-Sleep -Seconds 2
 }
 
 function Assert-PortFree {
     param([int]$Port, [string]$Name)
     if (Test-PortOpen $Port) {
-        if ($KillExistingOnPorts) {
+        if (-not $NoKillExistingOnPorts) {
             Stop-PortProcess -Port $Port -Name $Name
             if (-not (Test-PortOpen $Port)) {
                 return
             }
         }
-        throw "$Name port $Port is already in use. Stop the existing service first, or pass a different port."
+        throw "$Name port $Port is already in use. Stop the existing service first, pass a different port, or omit -NoKillExistingOnPorts."
     }
 }
 
@@ -97,6 +103,14 @@ if ($SeedExtraData -and $SeedData -eq "Rich") {
 }
 
 New-Item -ItemType Directory -Force -Path $RunDir | Out-Null
+
+if (-not $NoStopExisting) {
+    $stopScript = Join-Path $PSScriptRoot "stop-demo.ps1"
+    if (Test-Path $stopScript) {
+        Write-Step "stopping previously recorded demo services"
+        & $stopScript
+    }
+}
 
 Assert-Command "mvn"
 Assert-Command "npm"
