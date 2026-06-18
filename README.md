@@ -75,7 +75,7 @@ demo_approver / 123456
 .\scripts\start-demo.ps1
 ```
 
-脚本会使用 `functional-test` profile 启动后端和前端，并把日志、PID 写入 `output/demo-run`。默认访问地址：
+Windows 脚本会先停止上一轮演示服务，再使用 `functional-test` profile 启动后端和前端，并把日志、PID 写入 `output/demo-run`。默认访问地址：
 
 ```text
 前端：http://localhost:5173
@@ -92,6 +92,25 @@ demo_approver / 123456
 
 ```powershell
 .\scripts\stop-demo.ps1
+```
+
+macOS / Linux 本地演示脚本：
+
+```bash
+chmod +x scripts/start-demo.sh scripts/stop-demo.sh
+./scripts/start-demo.sh
+```
+
+macOS / Linux 脚本同样会先停止上一轮演示服务、释放默认端口、启动后端和前端，并启用演示数据。可通过环境变量调整端口：
+
+```bash
+BACKEND_PORT=18080 FRONTEND_PORT=15173 ./scripts/start-demo.sh
+```
+
+停止脚本：
+
+```bash
+./scripts/stop-demo.sh
 ```
 
 演示数据默认关闭。普通启动时系统会清理 `demo_` 用户和“演示”前缀业务数据；需要手动填充时可显式打开：
@@ -126,6 +145,41 @@ cd backend
 mvn package
 cd ..
 docker compose up -d --build
+```
+
+如果希望 Docker 启动时选择是否填充演示数据，可以使用脚本启动。
+
+PowerShell：
+
+```powershell
+.\scripts\start-docker-demo.ps1 -DemoData
+```
+
+macOS / Linux：
+
+```bash
+chmod +x scripts/start-docker-demo.sh
+./scripts/start-docker-demo.sh --demo-data
+```
+
+不填充演示数据：
+
+```powershell
+.\scripts\start-docker-demo.ps1 -NoDemoData
+```
+
+```bash
+./scripts/start-docker-demo.sh --no-demo-data
+```
+
+如果需要清空 PostgreSQL、Redis 和上传文件卷后重新启动：
+
+```powershell
+.\scripts\start-docker-demo.ps1 -DemoData -ResetVolumes
+```
+
+```bash
+./scripts/start-docker-demo.sh --demo-data --reset-volumes
 ```
 
 如果本机 Maven 未加入 PATH，可将上面的 `mvn` 替换为本机 Maven 绝对路径，例如：
